@@ -36,9 +36,27 @@ class PCU:
             print(stage.status_info()) # Prints info
             # <outfile> add stage.status_info <- Should we PORT/SAVE the information to a different location for testing, record keeping, etc?
         for rotator in rotators:
+            print(rotator.status_info())
+
+    # Specific positions for PCU from design document
+    def pinhole_mask_position(self):
+        raise NotImplementedError
+
+    def fiber_bundle_position(self):
+        raise NotImplementedError
+
+    def KPF_mirror_position(self):
+        raise NotImplementedError
+
+    def telescope_sim_position(self):
+        raise NotImplementedError
+
+    def telescope_position(self):
+        raise NotImplementedError
 
     # Control the stages and proceed in continuous process (default run of the PCU)
     def run_default(self):
+        raise NotImplementedError
 
 
 """
@@ -63,15 +81,13 @@ TODO: Make stage into an abstract class (?), then the different stages of the PC
 
     Use Device module at least. Or Motor Module (Epics Motor Device). Either way, extend the classes.
     ^ Actually, still unsure of basic running of PVs versus using Devices (due to nature of EPICS and its whole PV vs object-oriented programming)
-
-
 """
+
 class Stage:
     # The stage object it references
     def __init__(self, title, motor_value) #, d):
         stage_motor = epics.Motor("motor_value") # TODO: Fill in the quotation with the respective 'XXX:m1.VAL' (How is this attained? When hardware is physically connected to the local subnet?)
-        print("Stage " + title + " is initialized.") # When an instance of the stage is created (conceptually within the PCU, then should print this confirmation)
-        #direction = d # <- Better way to organize x, y, z stage?
+        print("Stage " + title + " is initialized.") # When an instance of the stage is created (conceptually within the PCU, then should print this confirmation) / or can store it somewhere else
 
     # Methods regarding status the PCU stage
     def get_location(self):
@@ -81,7 +97,7 @@ class Stage:
         return stage_motor.info # Find correct syntax
 
     # Methods regarding controlling the PCU stage
-    def move_to(self, location) #(self, x, y, z): # I think it's best to split this into sub-methods for abstraction?
+    def move_to(self, location): #(self, x, y, z): # I think it's best to split this into sub-methods for abstraction?
         # Call collision detection here?
         # Move x, check for collisions/errors
 
@@ -93,15 +109,24 @@ class Stage:
 class StageX(Stage):
     """
     Implements Stage class for x direction stage. Use PyEpics Epics Motor module.
+
+    Component Name: PI L-412
+
+    Required operations:
+    - Components within horizonal X stage: (Contained as PVs within this Device?)
+    - Movement limits
     """
-    def move_to(self, location):
-        motor.move(location, wait=True)
+
+    def move_to(self, position):
+        motor.move(position, wait=True)
+
 class StageY(Stage):
     """
     Implements Stage class for y direction stage. Use PyEpics Epics Motor module.
     """
     def move_to(self, location):
         motor.move(location, wait=True)
+
 class StageZ(Stage):
     """
     Implements Stage class for z direction stage. Use PyEpics Epics Motor module.
@@ -110,7 +135,7 @@ class StageZ(Stage):
         motor.move(location, wait=True)
 
 
-# Similar to Stage implemenation, but for rotation (think about what could be different?)
+# Similar to Stage implementation, but for rotation (think about what could be different?)
 class Rotator:
     # The PV object it references
     def __init__(self, title, pv_value):
@@ -125,6 +150,11 @@ class Rotator:
         return rotator_motor.info # Find correct syntax
 
     def rotate(self, r): # TODO: Find the correct terminology for this
+
+
+"""
+Other classes for other PCU components (that don't move as much/are stable):
+"""
 
 # Controllers status checking -> Collision detection, etc.
     # This can be handled by PyEpics and Epics itself, but HOW do we define what a collision is from the hardware/computer point of view (where to set the hardware boundaries/limitations?)
