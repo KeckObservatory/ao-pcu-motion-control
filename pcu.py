@@ -8,6 +8,22 @@ import pcu_rotator_controller as rtr
 
 initialized_ktl = False
 
+# Devices:
+# --- ARE DEVICES CONTROLLERS and STAGES? Or just controllers?
+controllers = (lnr, rtr)
+# stages = (x_stage, y_stage, z1_stage, z2_stage)
+
+# I want check understanding of connecting PI and Keck document layout
+def start_pcu_service():
+    # Populate all PCU keywords under PCU service
+    pcu_service = ktl.Service("PCU", populate=True)
+    # Monitor all keywords
+    pcu_service.monitor()
+    for keyword in pcu_service.populated():
+        print("Keyword ", keyword, ": ", keyword.read())
+
+# -----------------------------------------------------------
+# Below code follows if PCU controllers are the service versus the PCU itself being it
 def initialize_channels():
     lnr.start_up()
     rtr.start_up()
@@ -21,6 +37,7 @@ def reset():
 
 # Specific PCU Positions
 def pinhole_mask_position():
+    # Move X Stage:
     raise NotImplementedError
 
 def fiber_bundle_position():
