@@ -71,8 +71,13 @@ def update_field(name, value):
         return
     keyword.write(value)
 
+
+
+# -----------------------------------------------------------------------------
+# Ignore just for now (I think safer to have default position an actual measurement-defined position)
+
 """
 Move rotator to default position.
 """
 def default_position():
-    rotate_raw_coord(0)
+    

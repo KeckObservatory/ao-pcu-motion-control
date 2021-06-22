@@ -47,18 +47,21 @@ def read_fields():
         print("Keyword ", keyword, ": ", keyword.read())
 
 """
-Rotate the ____ Linear Stage, to the desired raw, user, or dial coordinates position.
+Set component in the ____ Linear Stage, to the desired raw, user, or dial coordinates position.
 Value: Positive argument means _________
 Units:
 """
-def rotate_raw_coord(value):
-    lnr['RVAL'].write(value)
+def move_X_stage_to(coord):
+    lnr['RVAL'].write(coord)
 
-def rotate_user_coord(value):
-    lnr['VAL'].write(value)
+def move_Y_stage_to(coord):
+    lnr['RVAL'].write(coord)
 
-def rotate_dial_coord(value):
-    lnr['DVAL'].write(value)
+def move_Z1_stage_to(coord):
+    lnr['RVAL'].write(coord)
+
+def move_Z2_stage_to(coord):
+    lnr['RVAL'].write(coord)
 
 """
 Change the field of a Keyword
@@ -67,12 +70,15 @@ Value: New value to write to field value
 """
 def update_field(name, value):
     keyword = lnr[name]
+    # Should probably do some error checking here
     if !keyword['populated']:
         return
     keyword.write(value)
 
+
+# -----------------------------------------------------------------------------
+# Ignore just for now (I think safer to have default position an actual measurement-defined position)
 """
 Move stage to default position.
 """
 def default_position():
-    rotate_raw_coord(0)
