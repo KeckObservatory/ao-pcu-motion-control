@@ -1,0 +1,31 @@
+---
+pinhole_mask:
+    m0: 105
+    m1:
+    m2:
+    m3:
+    m4:
+fiber_bundle:
+    m0:
+    m1:
+    m2:
+    m3:
+    m4:
+kpf_mirror:
+    m0:
+    m1:
+    m2:
+    m3:
+    m4:
+telescope_sim:
+    m0:
+    m1:
+    m2:
+    m3:
+    m4:
+telescope:
+    m0:
+    m1:
+    m2:
+    m3:
+    m4:
