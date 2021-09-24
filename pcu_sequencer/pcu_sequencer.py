@@ -3,32 +3,28 @@
 ### Date : 11/22/21
 
 from transitions import Machine, State
+import yaml
 
-state_lookup = {
-    'A': [0, 0, 0, 1],
-    'B': [0, 0, 1, 0],
-    'C': [0, 0, 1, 1],
-    'D': [0, 1, 0, 0],
-    'E': [0, 1, 0, 1],
-}
+yaml_file = "PCU_configurations.yaml"
 
-state_names = ['A', 'B', 'C', 'D', 'E']
+with open(yaml_file) as file:
+    state_lookup = yaml.load(file, Loader=yaml.FullLoader)
 
 class RunPCU:
     
     states = []
-    for name in state_names:
-        states.append(State(name=name, on_enter='move_motor'))
+    for name in state_lookup:
+        states.append(State(name=name, on_enter='move_motors'))
     
     def __init__(self):
         
         self.machine = Machine(model = self, states = RunPCU.states,
                                before_state_change='home_Zstages',
-                               initial = 'E')
+                               initial = 'telescope')
     
     def home_Zstages(self):
         print("Homing Z stages")
     
-    def move_motor(self):
+    def move_motors(self):
         positions = state_lookup[self.state]
         print(f"Moving motor to {positions} in state {self.state}")
