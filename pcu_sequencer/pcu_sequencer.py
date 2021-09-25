@@ -7,7 +7,7 @@ from transitions import Machine, State
 import yaml
 import numpy as np
 import time
-# from epics import PV
+from epics import PV
 
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
@@ -16,7 +16,7 @@ HOME = 0 # mm
 yaml_file = "PCU_configurations.yaml"
 valid_motors = [f"m{i}" for i in np.arange(1,5)]
 
-# Open and read YAML file
+# Open and read config file with info on named positions
 with open(yaml_file) as file:
     state_lookup = yaml.load(file, Loader=yaml.FullLoader)
 
@@ -26,7 +26,6 @@ get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
 
 def move_motor(m_name, m_dest, block=True):
     print(f"Setting {m_name} to {m_dest} mm") # temporary
-    return
     
     # Get PVs for motor
     m_get = RunPCU.motors['get'][m_name]
@@ -38,10 +37,10 @@ def move_motor(m_name, m_dest, block=True):
     if block:
         # Block until motor is moved
         cur_pos = m_get.get()
-        print(f"Getting {m_name} position")
         while cur_pos != m_dest: # Need a timeout and a tolerance or it may run forever
             # Get new position
             cur_pos = m_get.get()
+            print(f"{m_name} position: {cur_pos}")
             # Wait for a short time
             time.sleep(TIME_DELAY)
 
@@ -60,10 +59,8 @@ class RunPCU:
     }
     # One getter and one setter PV per motor
     for m_name in valid_motors:
-        motors['get'][m_name] = get_pattern.format(m_name)
-        motors['set'][m_name] = set_pattern.format(m_name)
-    
-    print(motors)
+        motors['get'][m_name] = PV(get_pattern.format(m_name))
+        motors['set'][m_name] = PV(set_pattern.format(m_name))
     
     # Initialize RunPCU instance
     def __init__(self):
