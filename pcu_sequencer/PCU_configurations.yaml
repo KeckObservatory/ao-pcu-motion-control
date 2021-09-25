@@ -1,31 +1,31 @@
 ---
 pinhole_mask:
-    m0: 105
-    m1: 190
-    m2: 100
-    m3: 0
-    m4: 0
+    m1: 105 # X stage
+    m2: 190 # Y stage
+    m3: 100 # Z stage (pinhole mask)
+    m4: 0 # Z stage (fiber bundle)
+#     m5: 0 # Rotation stage
 fiber_bundle:
-    m0: 150
-    m1: 120
-    m2: 0
-    m3: 100
-    m4: 0
+    m1: 150
+    m2: 120
+    m3: 0
+    m4: 100
+#     m5: 0
 kpf_mirror:
-    m0: 105
-    m1: 60
-    m2: 0
+    m1: 105
+    m2: 60
     m3: 0
     m4: 0
+#     m5: 0
 telescope_sim:
-    m0: 260
-    m1: 0
+    m1: 260
     m2: 0
     m3: 0
     m4: 0
+#     m5: 0
 telescope:
-    m0: 0
     m1: 0
     m2: 0
     m3: 0
     m4: 0
+#     m5: 0
