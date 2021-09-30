@@ -4,7 +4,7 @@
 
 ### Imports
 from transitions import Machine, State
-from kPySequencer.Sequencer import Sequencer
+from kPySequencer.Sequencer import Sequencer, PVDisconnectException, PVConnectException
 import yaml
 import numpy as np
 import time
@@ -60,10 +60,34 @@ class PCUSequencer(Sequencer):
         self.prepare(PCUStates)
     
     def process_IN_POS(self):
-        pass
-    
+        try:
+            # Wait for the user to set the desired request keyword and
+            # start the reconfig process.
+            request = self.seqrequest.lower()
+
+            if request != '':
+                if request == 'start':
+                    self.message('Starting!')
+                    self.to_MOVING()
+
+        # Enter the faulted state if a channel is disconnected while running
+        except PVDisconnectException:
+            self.to_FAULT()
+
     def process_MOVING(self):
-        pass
+        try:
+            # Wait for the user to set the desired request keyword and
+            # start the reconfig process.
+            request = self.seqrequest.lower()
+
+            if request != '':
+                if request == 'stop':
+                    self.message('Stopping!')
+                    self.to_IN_POS()
+
+        # Enter the faulted state if a channel is disconnected while running
+        except PVDisconnectException:
+            self.to_FAULT()
     
     def process_FAULT(self):
         pass
