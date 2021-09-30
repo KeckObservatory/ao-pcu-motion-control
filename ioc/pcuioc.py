@@ -3,7 +3,7 @@
 # kpython safely sets RELDIR, KROOT, LROOT, and PYTHONPATH before invoking
 # the actual Python interpreter.
 
-# Precision Calibration Unit IOC for the PI linear stages
+# Precision Calibration Unit IOC for the entire PCU (high-level IOC)
 
 import os
 import coloredlogs, logging
@@ -34,23 +34,23 @@ class MotorEPICS_ACS:
         self.posrb     = epics.PV(prefix + ".RBV")
         self.posval    = epics.PV(prefix + ".VAL")
         self.posvalrb  = epics.PV(prefix + ".RBV")
-        self.encoder   = epics.PV(prefix + ".REP")
-        self.jogf      = epics.PV(prefix + ".JOGF")
-        self.jogr      = epics.PV(prefix + ".JOGR")
-        self.vel       = epics.PV(prefix + ".VELO")
-        self.accelrb   = epics.PV(prefix + ".ACCL")
-        self.decelrb   = epics.PV(prefix + ".ACCL")
-        self.limitmax  = epics.PV(prefix + ".HLM")
-        self.limitmin  = epics.PV(prefix + ".LLM")
-        self.home      = epics.PV(prefix + ".HOMR")
-        self.motres    = epics.PV(prefix + ".MRES")
-        self.encres    = epics.PV(prefix + ".ERES")
-        self.mres       = self.motres.get()
-        self.eres       = self.encres.get()
+        # self.encoder   = epics.PV(prefix + ".REP")
+        # self.jogf      = epics.PV(prefix + ".JOGF")
+        # self.jogr      = epics.PV(prefix + ".JOGR")
+        # self.vel       = epics.PV(prefix + ".VELO")
+        # self.accelrb   = epics.PV(prefix + ".ACCL")
+        # self.decelrb   = epics.PV(prefix + ".ACCL")
+        # self.limitmax  = epics.PV(prefix + ".HLM")
+        # self.limitmin  = epics.PV(prefix + ".LLM")
+        # self.home      = epics.PV(prefix + ".HOMR")
+        # self.motres    = epics.PV(prefix + ".MRES")
+        # self.encres    = epics.PV(prefix + ".ERES")
+        # self.mres       = self.motres.get()
+        # self.eres       = self.encres.get()
 
 
 '''
-From the ICD:    
+From the ICD:
 
 Interface                EPICS channels      Keywords
 mX device            	 :connected          NMCONNECT
@@ -91,25 +91,31 @@ class CHANNELS(Enum):
     POSRB = auto()
     POSVAL = auto()
     POSVALRB = auto()
-    JOG = auto()
-    VEL = auto()
-    VELRB = auto()
-    ACCEL = auto()
-    ACCELRB = auto()
-    DECEL = auto()
-    DECELRB = auto()
-    LIMITMIN = auto()
-    LIMITMAX = auto()
-    ENABLE = auto()
-    ENABLERB = auto()
+    # JOG = auto()
+    # VEL = auto()
+    # VELRB = auto()
+    # ACCEL = auto()
+    # ACCELRB = auto()
+    # DECEL = auto()
+    # DECELRB = auto()
+    # LIMITMIN = auto()
+    # LIMITMAX = auto()
+    # ENABLE = auto()
+    # ENABLERB = auto()
+    PINHOLE = auto()        # PCU position A
+    FIBERBUNDLE = auto()    # PCU position B
+    KPFMIRROR = auto()      # PCU position C
+    TELESIM = auto()        # PCU position D
+    TELESCOPE = auto()      # PCU position E
+
 
 class ChannelCreateException(BaseException):
     """Exception to indicate a channel could not be created"""
     pass
 
-class PCU_LINEAR:
+class PCU:
     """
-    Main class for an PCU IOC Linear stage
+    Main class for the PCU IOC
     """
 
     # These channels can be written by outside clients, and need a callback tied to them
@@ -386,6 +392,7 @@ if __name__ == "__main__":
 
     # -------------------------------------------------------------------------
     # Commandline arguments
+    # TODO: Update parser arguments for debugging, because changed this Linear Stage template into entire PCU IOC
     parser = argparse.ArgumentParser(description='PCU IOC: PI linear stage ACS motion controller')
     parser.add_argument('-d', '--debug', help='Enable debugging output', action='store_true')
     parser.add_argument('-ioc', '--ioc', help='IOC prefix (e.g. kN:ao:pcu:ln)', required=True, type=str, default='k1:ao:as:pcu:ln')
@@ -421,6 +428,7 @@ if __name__ == "__main__":
     # for PI traffic, and the IOC thread
     device = PCU_LINEAR(prefix=prefix, motor=motor, debug=debug)
 
+    # TODO: Update "device = PCU_LINEAR" (above) and log string (below) because changed this Linear Stage template into entire PCU IOC
     log.info('Starting PCU Linear Stages IOC.')
 
     # Create a task pool to track our thread, set workers to match the number of threads
