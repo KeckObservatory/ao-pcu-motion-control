@@ -36,14 +36,14 @@ get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
 
 def move_motor(m_name, m_dest, block=True):
     print(f"Setting {m_name} to {m_dest} mm") # temporary
-    
+
     # Get PVs for motor
     m_get = RunPCU.motors['get'][m_name]
     m_set = RunPCU.motors['set'][m_name]
-    
+
     # Send move command
     m_set.put(m_dest)
-    
+
     if block:
         # Block until motor is moved
         cur_pos = m_get.get()
@@ -59,6 +59,40 @@ class PCUStates(Enum):
     MOVING = 1
     FAULT = 2
 
+class PCUIOC(IOC):
+    """
+    IOC subclass that manages the IOC for the PCU.
+    """
+    def __init__(self):
+        super().__init__()
+
+    def registerFloat(self, name, initial_value=0.0):
+        """
+        Register a float channel with this IOC for use.
+
+        :param name: Name of the channel.
+        :param initial_value: Initial value to set the channel.
+        :return: Reference to the channel.
+        """
+        if self.running:
+            raise self.IOCStartException(F'Cannot create channel {name} after IOC has started!')
+
+        self._log.debug(f'[IOC] Creating sequencer float channel {name}')
+        channel = builder.builder.aOut(name, initial_value=initial_value)
+        self.channels[name] = channel
+        return channel
+
+    def registerPCUChannel(self, fields, initial_value=False):
+        prefix = "k1:ao:pcu:"
+        fields = ['connected', 'errRb']
+        super().registerBool(prefix + fields[0], False)
+        super().registerString(prefix + fields[1])
+
+    def registerMotorChannel(self, name, initial_value=0):
+        super().registerLong(name, initial_value)
+        # TODO: Or use the following?
+        super().registerFloat(name, initial_value)
+
 # Class containing state machine
 class PCUSequencer(Sequencer):
 
@@ -67,20 +101,40 @@ class PCUSequencer(Sequencer):
         'get': {m_name: PV(get_pattern.format(m_name)) for m_name in valid_motors},
         'set': {m_name: PV(set_pattern.format(m_name)) for m_name in valid_motors}
     }
-    
+
     home_Z = {'m3':0, 'm4':0}
-    
+
+    # TODO: Which IOC channels to keep?
+    # ioc_channels = [('connected', bool,  CHANNELS.CONNECTED), # Controller connected status
+    #                 ('errRb',     str,   CHANNELS.ERROR), # Last stage error
+    #                 ('posRb',     str,   CHANNELS.POSRB), # Position readback, as named position
+    #                 ('velRb',     float, CHANNELS.VELRB), # Velocity, in mm/s
+    #                 ('accelRb',   float, CHANNELS.ACCELRB), # Acceleration, in mm/s^2
+    #                 ('decelRb',   float, CHANNELS.DECELRB), # Deceleration, in mm/s^2
+    #                 ('enableRb',  bool,  CHANNELS.ENABLERB),  # Enable stage status
+    #                 ]
+
     def __init__(self, prefix, tickrate=0.5):
-        super().__init__(prefix, tickrate)
-        
+        # TODO: Check integration with IOC
+        # TODO: Rename 'get_pattern' and 'set_pattern' to 'get_prefix' and 'set_prefix'?
+        pcu_ioc = PCUIOC()
+
+        # self.prepare(PCUStates) handles creating the channels for the transition state machine
+        # ---- Creates the channels for the PCU positions. Motor channels already exist.
+        # Add: ??
+        # pcu_ioc.registerPCUChannel
+
+        super().__init__(prefix, pcu_ioc, tickrate)
+
+
         self.prepare(PCUStates)
         self.destination = None
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
-    
+
     def true(): return True
-    
+
     def load_move(self, destination):
         # Append info to move list
         self.motor_moves.clear()
@@ -93,7 +147,7 @@ class PCUSequencer(Sequencer):
             dest = motor_posvals[m_name]
             # Append to motor moves
             self.motor_moves.append({m_name:dest})
-    
+
     def trigger_move(self, m_dict):
         """ Triggers move and sets a callback to check if complete """
         for m_name, m_dest in m_dict.items():
@@ -103,14 +157,14 @@ class PCUSequencer(Sequencer):
             m_set.put(m_dest)
         # Save current move to class variables
         self.current_move = m_dict
-    
+
     def move_complete(self):
         """ Returns a callback function that returns True when the move in m_dict is complete """
         # Get current motor motions
         m_dict = self.current_move
         # Return True if no moves are taking place
         if m_dict is None: return True
-        
+
         # Get current positions and compare to destinations
         for m_name, m_dest in m_dict.items():
             # Get PV getter for motor
@@ -123,7 +177,7 @@ class PCUSequencer(Sequencer):
         # Return True if motors are in position and release current_move
         self.current_move = None
         return True
-    
+
     def process_IN_POS(self):
         """ Processes the IN_POS state """
         try:
@@ -150,18 +204,18 @@ class PCUSequencer(Sequencer):
             # Check the request keyword and
             # start the reconfig process, if necessary
             request = self.seqrequest.lower()
-            
+
             if request != '':
                 if request == 'stop':
                     self.message('Stopping!')
                     self.to_IN_POS() # Should it go to fault?
-            
+
             # If it's the first iteration, set up the destination state
             if self.destination: # read configuration & load move
                 self.message(f"Loading {self.destination} state.")
                 load_move(self.destination)
                 self.destination = None
-            
+
             # If there are moves left and previous moves are done, do the next move
             if len(self.motor_moves) != 0 and self.move_complete():
                 # Pop from the list and trigger
@@ -176,41 +230,41 @@ class PCUSequencer(Sequencer):
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException:
             self.to_FAULT()
-    
+
     def process_FAULT(self):
         pass
-    
-    
+
+
 #     # Initialize PCU states, on_enter moves motors into position
 #     states = []
 #     for name in config_lookup:
 #         states.append(State(name=name, on_enter='move_motors'))
-    
+
 #     # Initialize RunPCU instance
 #     def __init__(self):
 #         # Models 5 telescopes states, home Z stages before changing states
 #         self.machine = Machine(model = self, states = RunPCU.states,
 #                                before_state_change='home_Zstages',
 #                                initial = 'telescope')
-    
+
 #     # Homes Z-stages before changing configuration
 #     def home_Zstages(self):
 #         move_motor('m3', HOME, block=False)
 #         move_motor('m4', HOME, block=True)
-    
+
 #     # Moves stages/motors to new configuration
 #     def move_motors(self):
 #         # Get position values for new state
 #         motor_posvals = config_lookup[self.state]
 #         print(f"Moving motor to {motor_posvals} in state {self.state}")
-        
+
 #         # Move each motor, in order
 #         for m_name in valid_motors:
 #             # Get desired motor position in current state
 #             m_dest = motor_posvals[m_name]
 #             # Move motor
 #             move_motor(m_name, m_dest)
-            
+
 
 if __name__ == "__main__":
 
