@@ -12,9 +12,19 @@ import numpy as np
 import time
 from epics import PV
 from enum import Enum
+import signal
 
+### SIGINT (Ctrl+c) processing
+
+
+# Static/global variables
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
+TOLERANCE = {
+    "m1": .01, # mm
+    "m2": .008, # mm
+    "m3": .005, # mm
+}
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -34,26 +44,6 @@ with open(yaml_file) as file:
 # Getter and Setter channel names for each motor
 set_pattern = "k1:ao:pcu:ln:{}:posval"
 get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
-
-# def move_motor(m_name, m_dest, block=True):
-#     print(f"Setting {m_name} to {m_dest} mm") # temporary
-    
-#     # Get PVs for motor
-#     m_get = PCUSequencer.motors['get'][m_name]
-#     m_set = PCUSequencer.motors['set'][m_name]
-    
-#     # Send move command
-#     m_set.put(m_dest)
-    
-#     if block:
-#         # Block until motor is moved
-#         cur_pos = m_get.get()
-#         while cur_pos != m_dest: # Need a timeout and a tolerance or it may run forever
-#             # Get new position
-#             cur_pos = m_get.get()
-#             print(f"{m_name} position: {cur_pos}")
-#             # Wait for a short time
-#             time.sleep(TIME_DELAY)
 
 class PCUStates(Enum):
     IN_POS = 0
@@ -79,6 +69,22 @@ class PCUSequencer(Sequencer):
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
+    
+    def in_position(self, m_name, m_dest):
+        # Get PV getter for motor
+        m_get = PCUSequencer.motors['get'][m_name]
+        # Get current position
+        cur_pos = m_get.get()
+        
+        # Compare to destination within tolerance, return False if not reached
+        t = TOLERANCE[m_name]
+        # Lower and upper limits
+        in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
+        if in_pos:
+            return True
+        else:
+            self.message(f"{m_name} has not reached {m_dest}. Current: {cur_pos}.")
+            return False
     
     def load_config(self, destination):
         """ Loads a configuration into class variables """
@@ -115,13 +121,9 @@ class PCUSequencer(Sequencer):
         # Get current positions and compare to destinations
         for m_name, m_dest in m_dict.items():
             if m_name in valid_motors:
-                # Get PV getter for motor
-                m_get = PCUSequencer.motors['get'][m_name]
-                # Get current position
-                cur_pos = m_get.get()
-                # Compare to destination, return False if not reached
-                if cur_pos != m_dest:
+                if not self.in_position(m_name, m_dest):
                     return False
+                
         # Return True if motors are in position and release current_move
         self.message(f"{self.current_move} complete!")
         self.current_move = None
@@ -161,7 +163,7 @@ class PCUSequencer(Sequencer):
             if request != '':
                 if request == 'stop':
                     self.message('Stopping!')
-                    self.to_IN_POS() # Should it go to fault?
+                    self.to_FAULT() # Should it go to fault?
             
             # If there are moves left and previous moves are done, do the next move
             if len(self.motor_moves) != 0 and self.move_complete():
