@@ -13,9 +13,7 @@ import time
 from epics import PV
 from enum import Enum
 import signal
-
-### SIGINT (Ctrl+c) processing
-
+import sys
 
 # Static/global variables
 TIME_DELAY = 0.5 # seconds
@@ -66,11 +64,12 @@ class PCUSequencer(Sequencer):
         
         self.prepare(PCUStates)
         self.destination = None
+        self.configuration = None
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
     
-    def in_position(self, m_name, m_dest):
+    def motor_in_position(self, m_name, m_dest):
         # Get PV getter for motor
         m_get = PCUSequencer.motors['get'][m_name]
         # Get current position
@@ -80,11 +79,8 @@ class PCUSequencer(Sequencer):
         t = TOLERANCE[m_name]
         # Lower and upper limits
         in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
-        if in_pos:
-            return True
-        else:
-            self.message(f"{m_name} has not reached {m_dest}. Current: {cur_pos}.")
-            return False
+        # Return whether the given motor is in position
+        return in_pos
     
     def load_config(self, destination):
         """ Loads a configuration into class variables """
@@ -121,11 +117,11 @@ class PCUSequencer(Sequencer):
         # Get current positions and compare to destinations
         for m_name, m_dest in m_dict.items():
             if m_name in valid_motors:
-                if not self.in_position(m_name, m_dest):
+                if not self.motor_in_position(m_name, m_dest):
                     return False
                 
         # Return True if motors are in position and release current_move
-        self.message(f"{self.current_move} complete!")
+        self.message(f"Move {self.current_move} complete!")
         self.current_move = None
         return True
     
@@ -161,7 +157,7 @@ class PCUSequencer(Sequencer):
             request = self.seqrequest.lower()
             
             if request != '':
-                if request == 'stop':
+                if request == 'abort':
                     self.message('Stopping!')
                     self.to_FAULT() # Should it go to fault?
             
@@ -184,36 +180,6 @@ class PCUSequencer(Sequencer):
     
     def process_FAULT(self):
         pass
-    
-#     # Initialize PCU states, on_enter moves motors into position
-#     states = []
-#     for name in config_lookup:
-#         states.append(State(name=name, on_enter='move_motors'))
-    
-#     # Initialize PCUSequencer instance
-#     def __init__(self):
-#         # Models 5 telescopes states, home Z stages before changing states
-#         self.machine = Machine(model = self, states = PCUSequencer.states,
-#                                before_state_change='home_Zstages',
-#                                initial = 'telescope')
-    
-#     # Homes Z-stages before changing configuration
-#     def home_Zstages(self):
-#         move_motor('m3', HOME, block=False)
-#         move_motor('m4', HOME, block=True)
-    
-#     # Moves stages/motors to new configuration
-#     def move_motors(self):
-#         # Get position values for new state
-#         motor_posvals = config_lookup[self.state]
-#         print(f"Moving motor to {motor_posvals} in state {self.state}")
-        
-#         # Move each motor, in order
-#         for m_name in valid_motors:
-#             # Get desired motor position in current state
-#             m_dest = motor_posvals[m_name]
-#             # Move motor
-#             move_motor(m_name, m_dest)
             
 
 if __name__ == "__main__":
