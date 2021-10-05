@@ -39,9 +39,47 @@ valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't 
 with open(yaml_file) as file:
     config_lookup = yaml.load(file, Loader=yaml.FullLoader)
 
+# Motor class
+class PCUMotor():
+    
+    # Patterns for motor functions
+    base_pattern = "k1:ao:pcu"
+    channels = {
+        'get_loc': "posvalRb",
+        'set_loc': "posval",
+        'halt': "halt",
+        'jog_loc': 'jog',
+        'go': 'go',
+    }
+    
+    def __init__(self, m_name, m_type):
+        
+        # Set up all channel PVs as attributes
+        for channel_key, channel_pat in PCUMotor.channels.items():
+            # Assemble full channel name
+            full_channel = f"{PCUMotor.base_pattern}:{m_type}:{m_name}:{channel_pat}"
+            # Create EPICS PV
+            channel_PV = PV(full_channel)
+            # Set attribute
+            setattr(self, channel_key, channel_PV)
+    
+    def get_pos(self):
+        return self.get_loc.get()
+
+    def set_pos(self, pos):
+        self.set_loc.put(pos)
+
+    def stop(self):
+        self.halt.put(1)
+    
+    def restart(self):
+        self.go.put(1)
+    
+
 # Getter and Setter channel names for each motor
 set_pattern = "k1:ao:pcu:ln:{}:posval"
 get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
+halt_pattern = "k1:ao:pcu:ln:{}:halt"
 
 class PCUStates(Enum):
     IN_POS = 0
@@ -64,7 +102,7 @@ class PCUSequencer(Sequencer):
         
         self.prepare(PCUStates)
         self.destination = None
-        self.configuration = None
+        self.in_config = None
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
@@ -82,14 +120,15 @@ class PCUSequencer(Sequencer):
         # Return whether the given motor is in position
         return in_pos
     
-    def load_config(self, destination):
+    def load_config(self):
         """ Loads a configuration into class variables """
+        # Get ordered moves from destination state
+        motor_posvals = config_lookup[self.destination]
+        
         # Append info to move list
         self.motor_moves.clear()
         self.motor_moves.append(PCUSequencer.home_Z)
 
-        # Get ordered moves from destination state
-        motor_posvals = config_lookup[destination]
         for m_name in valid_motors:
             # Get destination of each motor
             dest = motor_posvals[m_name]
@@ -138,8 +177,12 @@ class PCUSequencer(Sequencer):
                     destination = request[3:]
                     if destination in config_lookup:
                         self.message(f"Loading {destination} state.")
+                        # Clear configuration and set destination
+                        self.configuration = None
                         self.destination = destination
-                        self.load_config(self.destination)
+                        # Load next configuration
+                        self.load_config()
+                        # Start move
                         self.to_MOVING()
                     else: self.message(f'Invalid configuration: {destination}')
                 
@@ -161,18 +204,21 @@ class PCUSequencer(Sequencer):
                     self.message('Stopping!')
                     self.to_FAULT() # Should it go to fault?
             
-            # If there are moves left and previous moves are done, do the next move
+            # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():
-                # Pop from the list and trigger
+                # There are moves in the queue, pop next move from the list and trigger it
                 next_move = self.motor_moves.pop(0)
                 self.message(f"Triggering move, {next_move}.")
                 self.trigger_move(next_move)
-            elif len(self.motor_moves) == 0 and self.move_complete(): # No moves left
+            elif len(self.motor_moves) == 0 and self.move_complete():
+                # No moves left to make, finish and change state
                 self.message("Finished moving.")
+                # Change configuration and destination keywords
+                self.configuration = self.destination
+                self.destination = None
+                # Move to in-position state
                 self.to_IN_POS()
-#             else: self.message(f"Moving, {self.current_move}")
-            
-            self.message(f"Moves: {self.motor_moves}, Current: {self.current_move}, Complete: {self.move_complete()}")
+            else: self.message(f"Moving, {self.current_move}") # Move is in progress
 
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException:
@@ -180,7 +226,17 @@ class PCUSequencer(Sequencer):
     
     def process_FAULT(self):
         pass
-            
+    
+    def stop(self):
+        """ Stop all the motors and halt operation. """
+        # Message the thread
+        self.message("Stopping all motors.")
+        
+        # Stop motors
+        
+        
+        # Call the superclass stop method
+        super().stop()
 
 if __name__ == "__main__":
 
@@ -189,10 +245,10 @@ if __name__ == "__main__":
         SequencerTask1 = 0
 
     # The main sequencer
-    setup = PCUSequencer(prefix='test')
+    setup = PCUSequencer(prefix='k1:ao:pcu')
 
     # Create a task pool and register the sequencers that need to run
-    tasks = Tasks(TASKS, 'test', workers=len(TASKS))
+    tasks = Tasks(TASKS, 'k1:ao:pcu', workers=len(TASKS))
     tasks.register(setup, TASKS.SequencerTask1)
 
     # Start everything
