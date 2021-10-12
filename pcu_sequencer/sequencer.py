@@ -24,7 +24,7 @@ TOLERANCE = {
     "m2": .008, # mm
     "m3": .005, # mm
 }
-MOVE_TIME = 30 # seconds
+MOVE_TIME = 90 # seconds
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -101,7 +101,7 @@ class PCUStates(Enum):
     IN_POS = 1
     MOVING = 2
     FAULT = 3
-    TERMINATED = 4
+    TERMINATE = 4
 
 # Class containing state machine
 class PCUSequencer(Sequencer):
@@ -117,11 +117,11 @@ class PCUSequencer(Sequencer):
         super().__init__(prefix, tickrate=tickrate)
         
         # Create new channel for metastate
-#         self._seqrequest = self.ioc.registerString(f'{prefix}:meta_state')
+        self._seqmetastate = self.ioc.registerString(f'{prefix}:meta')
         
         self.prepare(PCUStates)
         self.destination = None
-        self.in_config = None
+        self.configuration = None
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
@@ -189,6 +189,14 @@ class PCUSequencer(Sequencer):
         self.current_move = None
         return True
     
+    def checkmeta(self):
+        if self.state == PCUStates.IN_POS:
+            if self.configuration is None:
+                self.metastate = "USER DEFINED"
+            else: self.metastate = self.configuration.upper()
+        else:
+            self.metastate = self.state.name
+    
     def process_INIT(self):
         ###################################
         ## Any initialization stuff here ##
@@ -201,6 +209,7 @@ class PCUSequencer(Sequencer):
     def process_IN_POS(self):
         """ Processes the IN_POS state """
         self.abortcheck()
+        self.checkmeta()
         try:
             # Wait for the user to set the desired request keyword and
             # start the reconfig process.
@@ -231,7 +240,7 @@ class PCUSequencer(Sequencer):
     def process_MOVING(self):
         """ Process the MOVING state """
         self.abortcheck()
-        
+        self.checkmeta()
         try:
             # Check the request keyword and
             # start the reconfig process, if necessary
@@ -251,7 +260,8 @@ class PCUSequencer(Sequencer):
                 self.destination = None
                 # Move to in-position state
                 self.to_IN_POS()
-            else: pass # Move is in progress
+            else: # Move is in progress
+                self.message(self.move_timer.elapsed)
             
             # Check if move has timed out
             if self.move_timer.expired:
@@ -272,7 +282,7 @@ class PCUSequencer(Sequencer):
         if request == 'reinit':
             self.to_INIT()
     
-    def process_TERMINATED(self):
+    def process_TERMINATE(self):
         pass
     
     def stop_motors(self):
@@ -300,6 +310,16 @@ class PCUSequencer(Sequencer):
             return True
 
         return False
+    
+    # Wrap the control channels in properties so they can be accessed like variables
+    @property
+    def metastate(self):
+        # Clear the request channel automatically!
+        request = self._seqmetastate.get()
+        # Don't want a destructive read
+        return request
+    @metastate.setter
+    def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
 
 if __name__ == "__main__":
 
