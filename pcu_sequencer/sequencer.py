@@ -208,6 +208,7 @@ class PCUSequencer(Sequencer):
     
     def process_IN_POS(self):
         """ Processes the IN_POS state """
+        ######### Add mini-moves here ##########
         self.abortcheck()
         self.checkmeta()
         try:
