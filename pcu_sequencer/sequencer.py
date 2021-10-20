@@ -25,6 +25,8 @@ TOLERANCE = {
     "m3": .005, # mm
 }
 MOVE_TIME = 90 # seconds
+CLEARANCE_PMASK = 26.5 # mm, including mask radius
+CLEARANCE_FIBER = 23.5 # mm, including fiber bundle
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -68,6 +70,8 @@ class PCUMotor():
             self.channel_list.append(channel_PV)
             # Set attribute
             setattr(self, channel_key, channel_PV)
+            # Set attribute name
+            setattr(self, channel_key+"_name", full_channel)
     
     def check_connection(self):
         for pv in self.channel_list:
@@ -119,6 +123,12 @@ class PCUSequencer(Sequencer):
         # Create new channel for metastate
         self._seqmetastate = self.ioc.registerString(f'{prefix}:meta')
         
+        # Register motor channels
+        for m_name in PCUSequencer.motors:
+            chan_name = f"{m_name}_rel"
+            # Register IOC channel
+            setattr(self, "_"+chan_name, self.ioc.registerLong(f'{prefix}:{chan_name}'))
+        
         self.prepare(PCUStates)
         self.destination = None
         self.configuration = None
@@ -128,12 +138,14 @@ class PCUSequencer(Sequencer):
         
         # A timer for runtime usage
         self.move_timer = CountdownTimer()
+        
+        self.message(self.m1_rel.get())
     
     def motor_in_position(self, m_name, m_dest):
         # Get PV getter for motor
-        m_get = PCUSequencer.motors[m_name]
+        motor = PCUSequencer.motors[m_name]
         # Get current position
-        cur_pos = m_get.get_pos()
+        cur_pos = motor.get_pos()
         
         # Compare to destination within tolerance, return False if not reached
         t = TOLERANCE[m_name]
@@ -157,10 +169,60 @@ class PCUSequencer(Sequencer):
             # Append to motor moves
             self.motor_moves.append({m_name:dest})
     
+    def get_positions():
+        """ Returns positions of all valid motors """
+        all_positions = {}
+        for m_name, motor in PCUSequencer.motors:
+            all_positions[m_name] = motor.get_pos()
+        
+        return all_positions
+    
+    def check_move(self, m_name, m_dest):
+        """ Checks that a move is valid within a configuration """
+        # Get current motor positions
+        dest_pos = self.get_positions()
+        dest_pos[m_name] = m_dest
+        # Get X and Y motor destinations
+        x_dest = dest_pos['m1']
+        y_dest = dest_pos['m2']
+        
+        # Get centers of XY coordinates
+        xc = config_lookup[self.configuration]['m1']
+        yc = config_lookup[self.configuration]['m2']
+        
+        # Check for pinhole mask moves
+        if self.configuration == "pinhole_mask":
+            r_circ = 42 # mm ### what do we want the clearance to be?
+            # I'm going to need the exact center of the circle we want for this
+            # The values we're using now are just estimates
+            
+            # OK to move pinhole mask, not fiber bundle
+            # Maybe this should raise an error? Can you attach a string to a 
+            #     low-level error and print out a warning higher up?
+            if m_name == 'm3': return True
+            if m_name == 'm4': return False
+            
+            # Check if XY motors are outside circle bounds
+            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ**2
+        
+        # Check for fiber bundle moves
+        if self.configuration == "fiber_bundle":
+            r_circ = 45 # mm ### no idea on this one
+            # OK to move fiber bundle, not pinhole mask
+            if m_name == 'm3': return False
+            if m_name == 'm4': return True
+            
+            # Check if XY motors are outside circle bounds
+            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ
+        
+        else: # Can't move in any other configuration atm
+            return False
+    
     def trigger_move(self, m_dict):
         """ Triggers move and sets a callback to check if complete """
         for m_name, m_dest in m_dict.items():
             if m_name in valid_motors:
+                self.check_move(m_name, m_dest)
                 # Get PV setter for motor
                 m_set = PCUSequencer.motors[m_name]
                 # Set position
@@ -192,7 +254,7 @@ class PCUSequencer(Sequencer):
     def checkmeta(self):
         if self.state == PCUStates.IN_POS:
             if self.configuration is None:
-                self.metastate = "USER DEFINED"
+                self.metastate = "USER_DEF"
             else: self.metastate = self.configuration.upper()
         else:
             self.metastate = self.state.name
@@ -209,9 +271,9 @@ class PCUSequencer(Sequencer):
     def process_IN_POS(self):
         """ Processes the IN_POS state """
         ######### Add mini-moves here ##########
-        self.message("In position")
-        self.abortcheck()
+        self.checkabort()
         self.checkmeta()
+        self.m1_rel.set(10)
         try:
             # Wait for the user to set the desired request keyword and
             # start the reconfig process.
@@ -241,7 +303,7 @@ class PCUSequencer(Sequencer):
 
     def process_MOVING(self):
         """ Process the MOVING state """
-        self.abortcheck()
+        self.checkabort()
         self.checkmeta()
         try:
             # Check the request keyword and
@@ -288,6 +350,8 @@ class PCUSequencer(Sequencer):
         pass
     
     def stop_motors(self):
+        """ Stop motors. """
+        self.motor_moves.clear()
         for _, pv in PCUSequencer.motors.items():
             pv.stop()
     
@@ -303,7 +367,7 @@ class PCUSequencer(Sequencer):
         super().stop()
     
     # -------------------------------------------------------------------------
-    def abortcheck(self):
+    def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
         if self.seqabort:
             self.critical('Aborting sequencer!')
@@ -322,6 +386,26 @@ class PCUSequencer(Sequencer):
         return request
     @metastate.setter
     def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
+    
+    # Set up motor variables for easier getting / setting
+    # Note: Make these safe for disabled motors
+    @property
+    def m1_rel(self):
+        return self._m1_rel.get()
+    @m1_rel.setter
+    def m1_rel(self, val): self._m1_rel.set(val)
+    
+    @property
+    def m2_rel(self):
+        return self._m2_rel.get()
+    @m2_rel.setter
+    def m2_rel(self, val): self._m2_rel.set(val)
+    
+    @property
+    def m3_rel(self):
+        return self._m3_rel.get()
+    @m2_rel.setter
+    def m3_rel(self, val): self._m3_rel.set(val)
 
 if __name__ == "__main__":
 
