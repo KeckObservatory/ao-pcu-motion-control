@@ -95,10 +95,10 @@ class PCUMotor():
         self.spmg.put('Stop')
     
 
-# Getter and Setter channel names for each motor
-set_pattern = "k1:ao:pcu:ln:{}:posval"
-get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
-halt_pattern = "k1:ao:pcu:ln:{}:halt"
+# # Getter and Setter channel names for each motor
+# set_pattern = "k1:ao:pcu:ln:{}:posval"
+# get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
+# halt_pattern = "k1:ao:pcu:ln:{}:halt"
 
 class PCUStates(Enum):
     INIT = 0
@@ -117,6 +117,9 @@ class PCUSequencer(Sequencer):
     
     home_Z = {'m3':0, 'm4':0}
     
+    # -------------------------------------------------------------------------
+    # Initialize the sequencer
+    # -------------------------------------------------------------------------
     def __init__(self, prefix="k1:ao:pcu", tickrate=0.5):
         super().__init__(prefix, tickrate=tickrate)
         
@@ -126,11 +129,11 @@ class PCUSequencer(Sequencer):
         # Register individual motor channels
         for m_name in PCUSequencer.motors:
             chan_name = f"{m_name}Offset"
-            # Register IOC channel for mini-moves
+            # Register IOC channel for setting mini-moves
             setattr(self, "_"+chan_name, self.ioc.registerLong(f'{prefix}:{chan_name}'))
+            self.add_property(chan_name, dest_read=True)
             # Register IOC channel for readback
             setattr(self, "_"+chan_name+"Rb", self.ioc.registerLong(f'{prefix}:{chan_name}Rb'))
-            self.add_property(chan_name, dest_read=True)
             self.add_property(chan_name+"Rb")
         
         self.prepare(PCUStates)
@@ -143,8 +146,15 @@ class PCUSequencer(Sequencer):
         # A timer for runtime usage
         self.move_timer = CountdownTimer()
     
+    # -------------------------------------------------------------------------
+    # Mini-move functions
+    # -------------------------------------------------------------------------
+    
     def add_property(self, p_name, dest_read=False):
-        """ Add a property to the class named <p_name>, with or without a destructive read """
+        """ 
+        Add a mini-move property to the PCUSequencer class
+        named <p_name>, with or without a destructive read
+        """
         chan_name = "_"+p_name
         
         # Define the getter channel for the property
@@ -166,42 +176,22 @@ class PCUSequencer(Sequencer):
                 )
                )
     
-    def motor_in_position(self, m_name, m_dest):
-        """ Checks whether a motor (m_name) is in position (m_dest) """
-        # Get PV getter for motor
-        motor = PCUSequencer.motors[m_name]
-        # Get current position
-        cur_pos = motor.get_pos()
+    def get_mini_moves(self):
+        """ Returns a dictionary of mini-moves to be taken """
+        mini_moves = {}
         
-        # Compare to destination within tolerance, return False if not reached
-        t = TOLERANCE[m_name]
-        # Lower and upper limits
-        in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
-        # Return whether the given motor is in position
-        return in_pos
-    
-    def load_config(self):
-        """ Loads a configuration into class variables """
-        # Get ordered moves from destination state
-        motor_posvals = config_lookup[self.destination]
+        # Check all motor input channels
+        for m_name in PCUSequencer.motors:
+            offset_channel = m_name+"Offset"
+            offset_request = getattr(self, offset_channel)
+            # Check for requested moves
+            if offset_request:
+                # Add to existing configuration
+                if self.configuration in config_lookup:
+                    offset_request += config_lookup[self.configuration]
+                mini_moves[m_name] = offset_request
         
-        # Append info to move list
-        self.motor_moves.clear()
-        self.motor_moves.append(PCUSequencer.home_Z)
-
-        for m_name in valid_motors:
-            # Get destination of each motor
-            dest = motor_posvals[m_name]
-            # Append to motor moves
-            self.motor_moves.append({m_name:dest})
-    
-    def get_positions(self):
-        """ Returns positions of all valid motors """
-        all_positions = {}
-        for m_name, motor in PCUSequencer.motors:
-            all_positions[m_name] = motor.get_pos()
-        
-        return all_positions
+        return mini_moves
     
     def check_offsets(self, mini_moves):
         """ Checks that a move is valid within a configuration """
@@ -245,22 +235,32 @@ class PCUSequencer(Sequencer):
         else: # Can't move in any other configuration currently
             return False
     
-    def check_mini_moves(self):
-        """ Returns a dictionary of mini-moves to be taken """
-        mini_moves = {}
+    # -------------------------------------------------------------------------
+    # Motor-moving functions
+    # -------------------------------------------------------------------------
+    
+    def get_positions(self):
+        """ Returns positions of all valid motors """
+        all_positions = {}
+        for m_name, motor in PCUSequencer.motors:
+            all_positions[m_name] = motor.get_pos()
         
-        # Check all motor input channels
-        for m_name in PCUSequencer.motors:
-            offset_channel = m_name+"Offset"
-            offset_request = getattr(self, offset_channel)
-            # Check for requested moves
-            if offset_request:
-                # Add to existing configuration
-                if self.configuration in config_lookup:
-                    offset_request += config_lookup[self.configuration]
-                mini_moves[m_name] = offset_request
+        return all_positions
+    
+    def load_config(self):
+        """ Loads a configuration into class variables """
+        # Get ordered moves from destination state
+        motor_posvals = config_lookup[self.destination]
         
-        return mini_moves
+        # Append info to move list
+        self.motor_moves.clear()
+        self.motor_moves.append(PCUSequencer.home_Z)
+
+        for m_name in valid_motors:
+            # Get destination of each motor
+            dest = motor_posvals[m_name]
+            # Append to motor moves
+            self.motor_moves.append({m_name:dest})
     
     def trigger_move(self, m_dict):
         """ Triggers move and sets a timer to check if complete """
@@ -276,6 +276,20 @@ class PCUSequencer(Sequencer):
         
         # Start a timer for the move
         self.move_timer.start(seconds=MOVE_TIME)
+    
+    def motor_in_position(self, m_name, m_dest):
+        """ Checks whether a motor (m_name) is in position (m_dest) """
+        # Get PV getter for motor
+        motor = PCUSequencer.motors[m_name]
+        # Get current position
+        cur_pos = motor.get_pos()
+        
+        # Compare to destination within tolerance, return False if not reached
+        t = TOLERANCE[m_name]
+        # Lower and upper limits
+        in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
+        # Return whether the given motor is in position
+        return in_pos
     
     def move_complete(self):
         """ Returns True when the move in self.current_move is complete """
@@ -302,7 +316,7 @@ class PCUSequencer(Sequencer):
             pv.stop()
     
     def stop(self):
-        """ Stop all the motors and halt operation. """
+        """ Stops all PCU motors and halts operation. """
         # Message the thread
         self.critical("Stopping all motors.")
         
@@ -312,6 +326,20 @@ class PCUSequencer(Sequencer):
         # Call the superclass stop method
         super().stop()
     
+    # -------------------------------------------------------------------------
+    # Flags and channel states
+    # -------------------------------------------------------------------------
+    
+    def checkabort(self):
+        """Check if the abort flag is set, and drop into the FAULT state"""
+        if self.seqabort:
+            self.critical('Aborting sequencer!')
+            self.stop_motors()
+            self.to_FAULT()
+            return True
+
+        return False
+    
     def checkmeta(self):
         if self.state == PCUStates.IN_POS:
             if self.configuration is None:
@@ -319,6 +347,22 @@ class PCUSequencer(Sequencer):
             else: self.metastate = self.configuration.upper()
         else:
             self.metastate = self.state.name
+    
+    def check_offsets(self):
+        """ Checks offsets from the current configuration """
+        if self.configuration not in config_lookup: # No metastate
+            for m_name in PCUSequencer.motors:
+                setattr(self, m_name+"OffsetRb", 0)
+        else: # Get offset positions
+            base_positions = config_lookup[self.configuration]
+            motor_positions = self.get_positions()
+            for m_name in motor_positions:
+                offset = base_positions[m_name] - motor_positions[m_name]
+                setattr(self, m_name+"OffsetRb", offset)
+    
+    # -------------------------------------------------------------------------
+    # Init state
+    # -------------------------------------------------------------------------
     
     def process_INIT(self):
         ###################################
@@ -329,15 +373,20 @@ class PCUSequencer(Sequencer):
         ###################################
         self.to_IN_POS()
     
+    # -------------------------------------------------------------------------
+    # IN_POS state
+    # -------------------------------------------------------------------------
+    
     def process_IN_POS(self):
         """ Processes the IN_POS state """
         ######### Add mini-moves here ##########
         self.checkabort()
         self.checkmeta()
+        self.check_offsets()
         
         try:
             # Check for mini-moves (dithers)
-            mini_moves = self.check_mini_moves()
+            mini_moves = self.get_mini_moves()
             # Found mini-moves
             if len(mini_moves) != 0:
                 # Trigger a PCU move
@@ -374,11 +423,17 @@ class PCUSequencer(Sequencer):
             # self.critical(message)
             self.stop_motors()
             self.to_FAULT()
-
+    
+    # -------------------------------------------------------------------------
+    # MOVING state
+    # -------------------------------------------------------------------------
+    
     def process_MOVING(self):
         """ Process the MOVING state """
         self.checkabort()
         self.checkmeta()
+        self.check_offsets()
+        
         try:
             # Check the request keyword and
             # start the reconfig process, if necessary
@@ -412,6 +467,10 @@ class PCUSequencer(Sequencer):
             self.stop_motors()
             self.to_FAULT()
     
+    # -------------------------------------------------------------------------
+    # FAULT state
+    # -------------------------------------------------------------------------
+    
     def process_FAULT(self):
         """ Processes the FAULT state """
         # Respond to request channel
@@ -419,21 +478,15 @@ class PCUSequencer(Sequencer):
         if request == 'reinit':
             self.to_INIT()
     
+    # -------------------------------------------------------------------------
+    # TERMINATE state
+    # -------------------------------------------------------------------------
     def process_TERMINATE(self):
         pass
     
     # -------------------------------------------------------------------------
-    def checkabort(self):
-        """Check if the abort flag is set, and drop into the FAULT state"""
-        if self.seqabort:
-            self.critical('Aborting sequencer!')
-            self.stop_motors()
-            self.to_FAULT()
-            return True
-
-        return False
-    
-    # Wrap the control channels in properties so they can be accessed like variables
+    # Control channel properties (static)
+    # -------------------------------------------------------------------------
     @property
     def metastate(self):
         request = self._seqmetastate.get()
@@ -442,6 +495,9 @@ class PCUSequencer(Sequencer):
     @metastate.setter
     def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
 
+# -------------------------------------------------------------------------
+# Main function
+# -------------------------------------------------------------------------
 if __name__ == "__main__":
 
     # Define an enum of task names
