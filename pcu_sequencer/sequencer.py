@@ -141,7 +141,17 @@ class PCUSequencer(Sequencer):
         
         self.message(self.m1_rel.get())
     
+    def add_property(self, p_name, dest_read=False):
+        """ Add a property to the class named p_name, with or without a destructive read """
+        setattr(self, p_name, # Set the self.<p_name> variable to the property described
+                property( # property decorator
+                    lambda self: getattr(self, "_"+p_name).get(), # Getter method
+                    lambda self, val: getattr(self, "_"+p_name).set(val.encode('UTF-8')) # Setter method
+                )
+               )
+    
     def motor_in_position(self, m_name, m_dest):
+        """ Checks whether a motor (m_name) is in position (m_dest) """
         # Get PV getter for motor
         motor = PCUSequencer.motors[m_name]
         # Get current position
