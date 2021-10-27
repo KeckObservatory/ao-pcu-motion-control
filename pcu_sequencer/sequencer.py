@@ -123,11 +123,15 @@ class PCUSequencer(Sequencer):
         # Create new channel for metastate
         self._seqmetastate = self.ioc.registerString(f'{prefix}:meta')
         
-        # Register motor channels
+        # Register individual motor channels
         for m_name in PCUSequencer.motors:
-            chan_name = f"{m_name}_rel"
-            # Register IOC channel
+            chan_name = f"{m_name}Offset"
+            # Register IOC channel for mini-moves
             setattr(self, "_"+chan_name, self.ioc.registerLong(f'{prefix}:{chan_name}'))
+            # Register IOC channel for readback
+            setattr(self, "_"+chan_name+"Rb", self.ioc.registerLong(f'{prefix}:{chan_name}Rb'))
+            self.add_property(chan_name)
+            self.add_property(chan_name+"Rb")
         
         self.prepare(PCUStates)
         self.destination = None
@@ -138,15 +142,13 @@ class PCUSequencer(Sequencer):
         
         # A timer for runtime usage
         self.move_timer = CountdownTimer()
-        
-        self.message(self.m1_rel.get())
     
     def add_property(self, p_name, dest_read=False):
         """ Add a property to the class named p_name, with or without a destructive read """
-        setattr(self, p_name, # Set the self.<p_name> variable to the property described
+        setattr(PCUSequencer, p_name, # Set the self.<p_name> variable to the property described
                 property( # property decorator
                     lambda self: getattr(self, "_"+p_name).get(), # Getter method
-                    lambda self, val: getattr(self, "_"+p_name).set(val.encode('UTF-8')) # Setter method
+                    lambda self, val: getattr(self, "_"+p_name).set(val) # Setter method
                 )
                )
     
@@ -228,6 +230,9 @@ class PCUSequencer(Sequencer):
         else: # Can't move in any other configuration atm
             return False
     
+    def check_motor_channels(self):
+        """ Returns a list of moves """
+    
     def trigger_move(self, m_dict):
         """ Triggers move and sets a callback to check if complete """
         for m_name, m_dest in m_dict.items():
@@ -283,7 +288,7 @@ class PCUSequencer(Sequencer):
         ######### Add mini-moves here ##########
         self.checkabort()
         self.checkmeta()
-        self.m1_rel.set(10)
+        
         try:
             # Wait for the user to set the desired request keyword and
             # start the reconfig process.
@@ -396,26 +401,6 @@ class PCUSequencer(Sequencer):
         return request
     @metastate.setter
     def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
-    
-    # Set up motor variables for easier getting / setting
-    # Note: Make these safe for disabled motors
-    @property
-    def m1_rel(self):
-        return self._m1_rel.get()
-    @m1_rel.setter
-    def m1_rel(self, val): self._m1_rel.set(val)
-    
-    @property
-    def m2_rel(self):
-        return self._m2_rel.get()
-    @m2_rel.setter
-    def m2_rel(self, val): self._m2_rel.set(val)
-    
-    @property
-    def m3_rel(self):
-        return self._m3_rel.get()
-    @m2_rel.setter
-    def m3_rel(self, val): self._m3_rel.set(val)
 
 if __name__ == "__main__":
 
