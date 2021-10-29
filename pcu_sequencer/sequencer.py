@@ -15,16 +15,18 @@ from epics import PV
 from enum import Enum
 import signal
 import sys
+import os
 
 # Static/global variables
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
+# FIX Z-STAGE: Add to tolerance
 TOLERANCE = {
     "m1": .01, # mm
     "m2": .008, # mm
     "m3": .005, # mm
 }
-MOVE_TIME = 90 # seconds
+MOVE_TIME = 45 # seconds
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -33,13 +35,20 @@ coloredlogs.install(level='DEBUG')
 log = logging.getLogger('')
 
 # Config file and motor numbers
-yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
+# FIX DEPLOY
+#yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
+yaml_file = "./PCU_configurations.yaml"
+
+# FIX Z-STAGE
 # valid_motors = [f"m{i}" for i in np.arange(1,5)]
 valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't working
 
 # Open and read config file with info on named positions
-with open(yaml_file) as file:
-    config_lookup = yaml.load(file, Loader=yaml.FullLoader)
+with open(yaml_file) as f:
+    lines = f.readlines()
+    config_lookup = yaml.load("\n".join(lines))
+    # FIX-YAML version on k1aoserver-new is too old.
+    #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
 
 # Motor class
 class PCUMotor():
@@ -110,8 +119,10 @@ class PCUSequencer(Sequencer):
     motors = {
         m_name: PCUMotor(m_name) for m_name in valid_motors
     }
-    
-    home_Z = {'m3':0, 'm4':0}
+
+    # FIX Z-STAGE
+    #home_Z = {'m3':0, 'm4':0}
+    home_Z = {'m3':0}
     
     def __init__(self, prefix="k1:ao:pcu", tickrate=0.5):
         super().__init__(prefix, tickrate=tickrate)
@@ -151,11 +162,19 @@ class PCUSequencer(Sequencer):
         self.motor_moves.clear()
         self.motor_moves.append(PCUSequencer.home_Z)
 
-        for m_name in valid_motors:
+        # for m_name in valid_motors:
+        for m_name in motor_posvals.keys():
+            # Skip bad entries in the yaml file.
+            if m_name not in valid_motors:
+                continue
+
             # Get destination of each motor
             dest = motor_posvals[m_name]
+
             # Append to motor moves
             self.motor_moves.append({m_name:dest})
+
+        return
     
     def trigger_move(self, m_dict):
         """ Triggers move and sets a callback to check if complete """
@@ -165,11 +184,14 @@ class PCUSequencer(Sequencer):
                 m_set = PCUSequencer.motors[m_name]
                 # Set position
                 m_set.set_pos(m_dest)
+
         # Save current move to class variables
         self.current_move = m_dict
         
         # Start a timer for the move
         self.move_timer.start(seconds=MOVE_TIME)
+
+        return
     
     def move_complete(self):
         """ Returns True when the move in self.current_move is complete """
@@ -322,6 +344,10 @@ class PCUSequencer(Sequencer):
     def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
 
 if __name__ == "__main__":
+
+    # Setup environment variables to find the right epics channels.
+    os.environ['EPICS_CA_ADDR_LIST'] = 'localhost:8600 localhost:8601 localhost:8602 localhost:8603 localhost:8604 localhost:8605 localhost:8606'
+    os.environ['EPICS_CA_AUTO_ADDR_LIST'] = 'NO'
 
     # Define an enum of task names
     class TASKS(Enum):
