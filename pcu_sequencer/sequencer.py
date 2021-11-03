@@ -54,7 +54,8 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'spmg': '.SPMG'
+        'disable_chan': ':disabl'
+        'spmg': '.SPMG',
     }
     
     def __init__(self, m_name, m_type="ln"):
@@ -79,6 +80,10 @@ class PCUMotor():
                 print(f"Channel {pv.pvname} has disconnected.")
                 raise PVDisconnectException
     
+    def isEnabled(self):
+        """ Checks whether the motor is enabled """
+        return not self.disable_chan.get()
+    
     def get_pos(self):
         self.check_connection()
         return self.get_chan.get()
@@ -91,7 +96,6 @@ class PCUMotor():
     def stop(self): 
         # Important that this doesn't check connection,
         # as a stop can result from a disconnect exception
-        # Should that be the case?
         self.spmg.put('Stop')
     
 
@@ -247,30 +251,45 @@ class PCUSequencer(Sequencer):
         
         return all_positions
     
-    def load_config(self):
-        """ Loads a configuration into class variables """
+    def load_config(self, destination):
+        """ Loads destination's moves into queue, clears current configuration """
         # Get ordered moves from destination state
-        motor_posvals = config_lookup[self.destination]
+        motor_posvals = config_lookup[destination]
         
         # Append info to move list
         self.motor_moves.clear()
-        self.motor_moves.append(PCUSequencer.home_Z)
+        
+        # Pull back Z stages if it's a major move
+        if self.configuration != destination:
+            self.motor_moves.append(PCUSequencer.home_Z)
+        # Note: this should make it so moves within a configuration 
+        #       don't pull the Z stages back all the way
 
         for m_name in valid_motors:
             # Get destination of each motor
             dest = motor_posvals[m_name]
             # Append to motor moves
             self.motor_moves.append({m_name:dest})
+        
+        # Clear configuration and set destination
+        self.configuration = None
+        self.destination = destination
     
     def trigger_move(self, m_dict):
         """ Triggers move and sets a timer to check if complete """
         for m_name, m_dest in m_dict.items():
             if m_name in valid_motors:
-                self.check_move(m_name, m_dest)
                 # Get PV setter for motor
-                m_set = PCUSequencer.motors[m_name]
-                # Set position
-                m_set.set_pos(m_dest)
+                motor = PCUSequencer.motors[m_name]
+                
+                # Check that the motor is enabled
+                if not motor.isEnabled():
+                    self.critical("Motor {m_name} is not enabled.")
+                    self.stop_motors()
+                    self.to_FAULT()
+                
+                # Set position of motor
+                motor.set_pos(m_dest)
         # Save current move to class variables
         self.current_move = m_dict
         
@@ -311,6 +330,7 @@ class PCUSequencer(Sequencer):
     
     def stop_motors(self):
         """ Stop motors. """
+        self.current_move = None
         self.motor_moves.clear()
         for _, pv in PCUSequencer.motors.items():
             pv.stop()
@@ -398,21 +418,18 @@ class PCUSequencer(Sequencer):
                 else: # Warn user
                     self.critical(f"Invalid moves for configuration {self.configuration}: {mini_moves}")
             
-            # Wait for the user to set the desired request keyword and
-            # start the reconfig process.
+            # Check the request keyword
             request = self.seqrequest.lower()
 
             if request != '':
                 self.message(request)
-                # Process destination
+                
+                # If move requested, process destination state
                 if request.startswith('to_'):
                     destination = request[3:]
                     if destination in config_lookup:
                         self.message(f"Loading {destination} state.")
-                        # Clear configuration and set destination
-                        self.configuration = None
-                        self.destination = destination
-                        # Load next configuration
+                        # Load next configuration (sets self.destination)
                         self.load_config()
                         # Start move
                         self.to_MOVING()
