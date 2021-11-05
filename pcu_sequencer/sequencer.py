@@ -15,16 +15,20 @@ from epics import PV
 from enum import Enum
 import signal
 import sys
+import os
 
 # Static/global variables
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
+
+# FIX Z-STAGE: Add to tolerance
 TOLERANCE = {
     "m1": .01, # mm
     "m2": .008, # mm
     "m3": .005, # mm
 }
-MOVE_TIME = 90 # seconds
+
+MOVE_TIME = 45 # seconds
 CLEARANCE_PMASK = 26.5 # mm, including mask radius
 CLEARANCE_FIBER = 23.5 # mm, including fiber bundle
 
@@ -35,13 +39,18 @@ coloredlogs.install(level='DEBUG')
 log = logging.getLogger('')
 
 # Config file and motor numbers
-yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
+# FIX DEPLOY
+# yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
+yaml_file = "./PCU_configurations.yaml"
 # valid_motors = [f"m{i}" for i in np.arange(1,5)]
 valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't working
 
 # Open and read config file with info on named positions
-with open(yaml_file) as file:
-    config_lookup = yaml.load(file, Loader=yaml.FullLoader)
+with open(yaml_file) as f:
+    lines = f.readlines()
+    config_lookup = yaml.load("\n".join(lines))
+    # FIX-YAML vestion on k1aoserver-new is too old
+#     config_lookup = yaml.load(file, Loader=yaml.FullLoader)
 
 # Motor class
 class PCUMotor():
@@ -97,12 +106,6 @@ class PCUMotor():
         # Important that this doesn't check connection,
         # as a stop can result from a disconnect exception
         self.spmg.put('Stop')
-    
-
-# # Getter and Setter channel names for each motor
-# set_pattern = "k1:ao:pcu:ln:{}:posval"
-# get_pattern = "k1:ao:pcu:ln:{}:posvalRb"
-# halt_pattern = "k1:ao:pcu:ln:{}:halt"
 
 class PCUStates(Enum):
     INIT = 0
@@ -265,7 +268,11 @@ class PCUSequencer(Sequencer):
         # Note: this should make it so moves within a configuration 
         #       don't pull the Z stages back all the way
 
-        for m_name in valid_motors:
+        for m_name in motor_posvals.keys():
+            # Skip bad entries in the YAML file
+            if m_name not in valid_motors:
+                continue
+            
             # Get destination of each motor
             dest = motor_posvals[m_name]
             # Append to motor moves
@@ -516,6 +523,11 @@ class PCUSequencer(Sequencer):
 # Main function
 # -------------------------------------------------------------------------
 if __name__ == "__main__":
+    
+    # Setup environment variables to find the right EPICS channel
+    os.environ[‘EPICS_CA_ADDR_LIST’] = 'localhost:8600 localhost:8601 localhost:8602 ' + \
+        'localhost:8603 localhost:8604 localhost:8605 localhost:8606 localhost:5064'
+    os.environ[‘EPICS_CA_AUTO_ADDR_LIST’] = 'NO'
 
     # Define an enum of task names
     class TASKS(Enum):
