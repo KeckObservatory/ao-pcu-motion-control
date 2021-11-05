@@ -40,8 +40,10 @@ log = logging.getLogger('')
 
 # Config file and motor numbers
 # FIX DEPLOY
-# yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
+#yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
 yaml_file = "./PCU_configurations.yaml"
+
+# FIX Z-STAGE
 # valid_motors = [f"m{i}" for i in np.arange(1,5)]
 valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't working
 
@@ -49,8 +51,8 @@ valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't 
 with open(yaml_file) as f:
     lines = f.readlines()
     config_lookup = yaml.load("\n".join(lines))
-    # FIX-YAML vestion on k1aoserver-new is too old
-#     config_lookup = yaml.load(file, Loader=yaml.FullLoader)
+    # FIX-YAML version on k1aoserver-new is too old.
+    #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
 
 # Motor class
 class PCUMotor():
@@ -121,8 +123,10 @@ class PCUSequencer(Sequencer):
     motors = {
         m_name: PCUMotor(m_name) for m_name in valid_motors
     }
-    
-    home_Z = {'m3':0, 'm4':0}
+
+    # FIX Z-STAGE
+    #home_Z = {'m3':0, 'm4':0}
+    home_Z = {'m3':0}
     
     # -------------------------------------------------------------------------
     # Initialize the sequencer
@@ -269,24 +273,27 @@ class PCUSequencer(Sequencer):
         #       don't pull the Z stages back all the way
 
         for m_name in motor_posvals.keys():
-            # Skip bad entries in the YAML file
+            # Skip bad entries in the yaml file.
             if m_name not in valid_motors:
                 continue
-            
+
             # Get destination of each motor
             dest = motor_posvals[m_name]
+
             # Append to motor moves
             self.motor_moves.append({m_name:dest})
         
         # Clear configuration and set destination
         self.configuration = None
         self.destination = destination
+
+        return
     
     def trigger_move(self, m_dict):
         """ Triggers move and sets a timer to check if complete """
         for m_name, m_dest in m_dict.items():
             if m_name in valid_motors:
-                # Get PV setter for motor
+                # Get PV object for motor
                 motor = PCUSequencer.motors[m_name]
                 
                 # Check that the motor is enabled
@@ -297,11 +304,14 @@ class PCUSequencer(Sequencer):
                 
                 # Set position of motor
                 motor.set_pos(m_dest)
+        
         # Save current move to class variables
         self.current_move = m_dict
         
         # Start a timer for the move
         self.move_timer.start(seconds=MOVE_TIME)
+
+        return
     
     def motor_in_position(self, m_name, m_dest):
         """ Checks whether a motor (m_name) is in position (m_dest) """
