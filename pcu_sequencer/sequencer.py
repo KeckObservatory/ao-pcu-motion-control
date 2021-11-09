@@ -253,7 +253,7 @@ class PCUSequencer(Sequencer):
     def get_positions(self):
         """ Returns positions of all valid motors """
         all_positions = {}
-        for m_name, motor in PCUSequencer.motors:
+        for m_name, motor in PCUSequencer.motors.items():
             all_positions[m_name] = motor.get_pos()
         
         return all_positions
