@@ -204,7 +204,7 @@ class PCUSequencer(Sequencer):
         
         return mini_moves
     
-    def check_offsets(self, mini_moves):
+    def check_mini_moves(self, mini_moves):
         """ Checks that a move is valid within a configuration """
         # Get current motor positions
         dest_pos = self.get_positions()
@@ -437,7 +437,7 @@ class PCUSequencer(Sequencer):
             # Found mini-moves
             if len(mini_moves) != 0:
                 # Trigger a PCU move
-                if self.check_offsets(mini_moves):
+                if self.check_mini_moves(mini_moves):
                     # Load mini-moves into queue
                     self.motor_moves.append(mini_moves)
                     # Go to moving
