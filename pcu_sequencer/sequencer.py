@@ -392,6 +392,7 @@ class PCUSequencer(Sequencer):
         return False
     
     def checkmeta(self):
+        self.message(f"Current state is {self.state}, configuration {self.configuration}")
         if self.state == PCUStates.IN_POS:
             if self.configuration is None:
                 self.metastate = "USER_DEF"
@@ -444,6 +445,8 @@ class PCUSequencer(Sequencer):
                 if self.check_mini_moves(mini_moves):
                     # Load mini-moves into queue
                     self.motor_moves.append(mini_moves)
+                    # Need to set destination to preserve configuration
+                    self.destination = self.configuration
                     # Go to moving
                     self.to_MOVING()
                 else: # Warn user
