@@ -455,7 +455,7 @@ class PCUSequencer(Sequencer):
                     if destination in config_lookup:
                         self.message(f"Loading {destination} state.")
                         # Load next configuration (sets self.destination)
-                        self.load_config()
+                        self.load_config(destination)
                         # Start move
                         self.to_MOVING()
                     else: self.critical(f'Invalid configuration: {destination}')
