@@ -199,7 +199,7 @@ class PCUSequencer(Sequencer):
             if offset_request:
                 # Add to existing configuration
                 if self.configuration in config_lookup:
-                    offset_request += config_lookup[self.configuration]
+                    offset_request += config_lookup[self.configuration][m_name]
                 mini_moves[m_name] = offset_request
         
         return mini_moves
@@ -504,7 +504,7 @@ class PCUSequencer(Sequencer):
                 # Move to in-position state
                 self.to_IN_POS()
             else: # Move is in progress
-                self.message(self.move_timer.elapsed)
+                pass
             
             # Check if move has timed out
             if self.move_timer.expired:
