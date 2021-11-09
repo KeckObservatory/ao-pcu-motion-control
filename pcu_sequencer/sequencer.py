@@ -65,7 +65,7 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'enable_chan': '_able.VAL',
+        'enable': '_able.VAL',
         'spmg': '.SPMG',
     }
     
@@ -93,7 +93,7 @@ class PCUMotor():
     
     def isEnabled(self):
         """ Checks whether the motor is enabled """
-        return self.enable_chan.get() == 'Enable'
+        return not self.enable_chan.get()
     
     def get_pos(self):
         self.check_connection()
@@ -298,7 +298,7 @@ class PCUSequencer(Sequencer):
                 
                 # Check that the motor is enabled
                 if not motor.isEnabled():
-                    self.critical("Motor {m_name} is not enabled.")
+                    self.critical(f"Motor {m_name} is not enabled.")
                     self.stop_motors()
                     self.to_FAULT()
                 
