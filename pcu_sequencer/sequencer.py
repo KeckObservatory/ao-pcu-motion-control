@@ -346,17 +346,21 @@ class PCUSequencer(Sequencer):
         return True
     
     def stop_motors(self):
-        """ Stop motors. """
+        """ Stops motors only """
+        
+        # Message the thread
+        self.critical("Stopping all motors.")
+        
+        # Clear future moves from queue
         self.current_move = None
         self.motor_moves.clear()
+        
+        # Stop motors
         for _, pv in PCUSequencer.motors.items():
             pv.stop()
     
     def stop(self):
-        """ Stops all PCU motors and halts operation. """
-        # Message the thread
-        self.critical("Stopping all motors.")
-        
+        """ Stops all PCU motors and halts operation """
         # Stop motors
         self.stop_motors()
         
@@ -364,8 +368,12 @@ class PCUSequencer(Sequencer):
         super().stop()
     
     # -------------------------------------------------------------------------
-    # Flags and channel states
+    # I/O processing
     # -------------------------------------------------------------------------
+    
+    def process_request(self):
+        """ Processes input from the request keyword and returns it if valid """
+        pass
     
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
@@ -472,6 +480,12 @@ class PCUSequencer(Sequencer):
             # Check the request keyword and
             # start the reconfig process, if necessary
             request = self.seqrequest.lower()
+            
+            # Stop the PCU and go to USER_DEF position
+            if request == 'stop':
+                self.stop_motors()
+                self.configuration = None
+                self.to_IN_POS()
             
             # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():
