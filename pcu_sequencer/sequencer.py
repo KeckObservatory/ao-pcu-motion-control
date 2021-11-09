@@ -65,7 +65,7 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'enable': '_able.VAL',
+        'enable_chan': '_able.VAL',
         'spmg': '.SPMG',
     }
     
