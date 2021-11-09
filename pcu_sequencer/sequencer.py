@@ -549,9 +549,9 @@ class PCUSequencer(Sequencer):
 if __name__ == "__main__":
     
     # Setup environment variables to find the right EPICS channel
-    os.environ[‘EPICS_CA_ADDR_LIST’] = 'localhost:8600 localhost:8601 localhost:8602 ' + \
+    os.environ['EPICS_CA_ADDR_LIST'] = 'localhost:8600 localhost:8601 localhost:8602 ' + \
         'localhost:8603 localhost:8604 localhost:8605 localhost:8606 localhost:5064'
-    os.environ[‘EPICS_CA_AUTO_ADDR_LIST’] = 'NO'
+    os.environ['EPICS_CA_AUTO_ADDR_LIST'] = 'NO'
 
     # Define an enum of task names
     class TASKS(Enum):
