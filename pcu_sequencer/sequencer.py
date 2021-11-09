@@ -206,6 +206,10 @@ class PCUSequencer(Sequencer):
     
     def check_mini_moves(self, mini_moves):
         """ Checks that a move is valid within a configuration """
+        # Check that it is the right configuration
+        if self.configuration not in ['pinhole_mask', 'fiber_bundle']:
+            return False
+        
         # Get current motor positions
         dest_pos = self.get_positions()
         # Update to new positions
@@ -243,8 +247,8 @@ class PCUSequencer(Sequencer):
             # Check if XY motors are outside circle bounds
             return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ
             
-        else: # Can't move in any other configuration currently
-            return False
+#         else: # Can't move in any other configuration currently
+#             return False
     
     # -------------------------------------------------------------------------
     # Motor-moving functions
@@ -443,7 +447,7 @@ class PCUSequencer(Sequencer):
                     # Go to moving
                     self.to_MOVING()
                 else: # Warn user
-                    self.critical(f"Invalid moves for configuration {self.configuration}: {mini_moves}")
+                    self.critical(f"Invalid move for configuration {self.configuration}: {mini_moves}")
             
             # Check the request keyword
             request = self.seqrequest.lower()
