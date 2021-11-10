@@ -409,7 +409,7 @@ class PCUSequencer(Sequencer):
             base_positions = config_lookup[self.configuration]
             motor_positions = self.get_positions()
             for m_name in motor_positions:
-                offset = base_positions[m_name] - motor_positions[m_name]
+                offset = motor_positions[m_name] - base_positions[m_name]
                 setattr(self, m_name+"OffsetRb", offset)
     
     # -------------------------------------------------------------------------
