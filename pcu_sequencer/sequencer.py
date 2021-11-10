@@ -29,8 +29,8 @@ TOLERANCE = {
 }
 
 MOVE_TIME = 45 # seconds
-CLEARANCE_PMASK = 26.5 # mm, including mask radius
-CLEARANCE_FIBER = 23.5 # mm, including fiber bundle
+CLEARANCE_PMASK = 35 # mm, including mask radius
+CLEARANCE_FIBER = 35 # mm, including fiber radius
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -392,7 +392,6 @@ class PCUSequencer(Sequencer):
         return False
     
     def checkmeta(self):
-        self.message(f"Current state is {self.state}, configuration {self.configuration}")
         if self.state == PCUStates.IN_POS:
             if self.configuration is None:
                 self.metastate = "USER_DEF"
