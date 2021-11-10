@@ -179,6 +179,7 @@ class PCUSequencer(Sequencer):
             if dest_read: # Clear value
                 if value not in [RESET_VAL, None]:
                     getattr(self, chan_name).set(RESET_VAL)
+                else return None # Reset value
             # Return set value
             return value
         
