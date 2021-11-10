@@ -28,7 +28,7 @@ TOLERANCE = {
     "m3": .005, # mm
 }
 
-MOVE_TIME = 45 # seconds
+MOVE_TIME = 50 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
 
@@ -514,7 +514,7 @@ class PCUSequencer(Sequencer):
             
             # Check if move has timed out
             if self.move_timer.expired:
-                self.critical("Move failed.")
+                self.critical("Move failed due to motor timeout.")
                 self.stop_motors()
                 self.to_FAULT()
 
