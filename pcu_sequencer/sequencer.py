@@ -198,7 +198,6 @@ class PCUSequencer(Sequencer):
         for m_name in PCUSequencer.motors:
             offset_channel = m_name+"Offset"
             offset_request = getattr(self, offset_channel)
-            self.message(f"Offset request: {offset_request}")
             # Check for requested moves
             if offset_request:
                 # Add to existing configuration
