@@ -179,8 +179,10 @@ class PCUSequencer(Sequencer):
             if dest_read: # Clear value
                 if value not in [RESET_VAL, None]:
                     getattr(self, chan_name).set(RESET_VAL)
+                if value == RESET_VAL:
+                    return None
             # Return set value
-            return value if value!=RESET_VAL else None
+            return value
         
         # Set the property attributes
         setattr(PCUSequencer, p_name, # Set the self.<p_name> variable to the property described
