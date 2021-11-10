@@ -28,7 +28,7 @@ TOLERANCE = {
     "m3": .005, # mm
 }
 
-MOVE_TIME = 50 # seconds
+MOVE_TIME = 45 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
 
@@ -360,6 +360,7 @@ class PCUSequencer(Sequencer):
         self.motor_moves.clear()
         # Set config to unknown
         self.configuration = None
+        self.destination = None
         
         # Stop motors
         for _, pv in PCUSequencer.motors.items():
@@ -455,8 +456,6 @@ class PCUSequencer(Sequencer):
             request = self.seqrequest.lower()
 
             if request != '':
-                self.message(request)
-                
                 # If move requested, process destination state
                 if request.startswith('to_'):
                     destination = request[3:]
@@ -492,7 +491,6 @@ class PCUSequencer(Sequencer):
             # Stop the PCU and go to USER_DEF position
             if request == 'stop':
                 self.stop_motors()
-                self.configuration = None
                 self.to_IN_POS()
             
             # If there are moves in the queue and previous moves are done
