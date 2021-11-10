@@ -219,6 +219,11 @@ class PCUSequencer(Sequencer):
         x_dest = dest_pos['m1']
         y_dest = dest_pos['m2']
         
+        # Check for Y-limit
+        if y_dest > 200:
+            self.message("Y-stage limit detected.")
+            return False
+        
         # Get centers of XY coordinates
         xc = config_lookup[self.configuration]['m1']
         yc = config_lookup[self.configuration]['m2']
@@ -492,6 +497,9 @@ class PCUSequencer(Sequencer):
             if request == 'stop':
                 self.stop_motors()
                 self.to_IN_POS()
+            
+            if request.startswith('to_'):
+                self.critical("Send stop signal before moving to new position.")
             
             # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():
