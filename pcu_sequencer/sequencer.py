@@ -33,7 +33,7 @@ CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
 
 # Undefined value for mini-move channels
-RESET_VAL = -999.99 # mm, theoretically
+RESET_VAL = -999.9 # mm, theoretically
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -144,10 +144,10 @@ class PCUSequencer(Sequencer):
         for m_name in PCUSequencer.motors:
             chan_name = f"{m_name}Offset"
             # Register IOC channel for setting mini-moves
-            setattr(self, "_"+chan_name, self.ioc.registerLong(f'{prefix}:{chan_name}'))
+            setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}'))
             self.add_property(chan_name, dest_read=True)
             # Register IOC channel for readback
-            setattr(self, "_"+chan_name+"Rb", self.ioc.registerLong(f'{prefix}:{chan_name}Rb'))
+            setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
             self.add_property(chan_name+"Rb")
         
         self.prepare(PCUStates)
@@ -179,9 +179,8 @@ class PCUSequencer(Sequencer):
             if dest_read: # Clear value
                 if value not in [RESET_VAL, None]:
                     getattr(self, chan_name).set(RESET_VAL)
-                else: return None # Reset value
             # Return set value
-            return value
+            return value if value!=RESET_VAL else None
         
         # Set the property attributes
         setattr(PCUSequencer, p_name, # Set the self.<p_name> variable to the property described
@@ -199,6 +198,7 @@ class PCUSequencer(Sequencer):
         for m_name in PCUSequencer.motors:
             offset_channel = m_name+"Offset"
             offset_request = getattr(self, offset_channel)
+            self.message(f"Offset request: {offset_request}")
             # Check for requested moves
             if offset_request:
                 # Add to existing configuration
