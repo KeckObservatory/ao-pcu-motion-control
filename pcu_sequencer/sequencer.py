@@ -21,7 +21,7 @@ import os
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
 
-# FIX Z-STAGE: Add to tolerance
+# FIX Z-STAGE: Add to tolerance (copy m3)
 TOLERANCE = {
     "m1": .01, # mm
     "m2": .008, # mm
@@ -31,6 +31,9 @@ TOLERANCE = {
 MOVE_TIME = 45 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
+
+# Undefined value for mini-move channels
+RESET_VAL = -999.99 # mm, theoretically
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
@@ -174,8 +177,8 @@ class PCUSequencer(Sequencer):
             value = getattr(self, chan_name).get()
             
             if dest_read: # Clear value
-                if value not in [0, None]:
-                    getattr(self, chan_name).set(0)
+                if value not in [RESET_VAL, None]:
+                    getattr(self, chan_name).set(RESET_VAL)
             # Return set value
             return value
         
