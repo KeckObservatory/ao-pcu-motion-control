@@ -403,9 +403,7 @@ class PCUSequencer(Sequencer):
         """Check if the abort flag is set, and drop into the FAULT state"""
         if self.seqabort:
             self.critical('Aborting sequencer!')
-            self.stop_motors()
-            self.to_FAULT()
-            return True
+            self.stop()
 
         return False
     
