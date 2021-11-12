@@ -242,7 +242,7 @@ class PCUSequencer(Sequencer):
         
         # Check for pinhole mask moves
         if self.configuration == "pinhole_mask":
-            r_circ = 42 # mm ### what do we want the clearance to be?
+            r_circ = CLEARANCE_PMASK # mm ### what do we want the clearance to be?
             # I'm going to need the exact center of the circle we want for this
             # The values we're using now are just estimates
             
@@ -253,10 +253,10 @@ class PCUSequencer(Sequencer):
             if m_name == 'm4': return False
             
             # Check if XY motors are outside circle bounds
-            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ**2
+            return (x_dest-xc)**2 + (y_dest-yc)**2 < r_circ**2
         
         elif self.configuration == "fiber_bundle": # Check for fiber bundle moves
-            r_circ = 45 # mm ### no idea on this one
+            r_circ = CLEARANCE_FIBER # mm
             # OK to move fiber bundle, not pinhole mask
             if m_name == 'm3': return False
             if m_name == 'm4': return True
