@@ -68,7 +68,7 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'enable_chan': '_able.VAL',
+        'enable_chan': ':enableRb',
         'spmg': '.SPMG',
     }
     
@@ -201,7 +201,7 @@ class PCUSequencer(Sequencer):
             offset_channel = m_name+"Offset"
             offset_request = getattr(self, offset_channel)
             # Check for requested moves
-            if offset_request:
+            if offset_request is not None:
                 # Add to existing configuration
                 if self.configuration in config_lookup:
                     offset_request += config_lookup[self.configuration][m_name]
@@ -223,10 +223,17 @@ class PCUSequencer(Sequencer):
         # Get X and Y motor destinations
         x_dest = dest_pos['m1']
         y_dest = dest_pos['m2']
-        
-        # Check for Y-limit
-        if y_dest > 200:
+        z1_dest = dest_pos['m3']
+
+        # Check for limits
+        if x_dest > 305 or x_dest < 0:
+            self.message("X-stage limit detected")
+            return False
+        if y_dest > 202 or y_dest < 0:
             self.message("Y-stage limit detected.")
+            return False
+        if z1_dest > 100 or z1_dest < 0:
+            self.message("Z-stage limit detected.")
             return False
         
         # Get centers of XY coordinates
