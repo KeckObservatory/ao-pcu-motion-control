@@ -213,6 +213,36 @@ class PCUSequencer(Sequencer):
         
         return mini_moves
     
+    def check_motor_limits(dest_pos):
+        """ Get X and Y motor destinations and check limits """
+        # I would like to add the limits to the YAML and streamline this
+        
+        if 'm1' in valid_motors:
+            x_dest = dest_pos['m1']
+            if x_dest > 305 or x_dest < 0:
+                self.message("X-stage limit detected")
+                return False
+        
+        if 'm2' in valid_motors:
+            y_dest = dest_pos['m2']
+            if y_dest > 202 or y_dest < 0:
+                self.message("Y-stage limit detected.")
+                return False
+        
+        if 'm3' in valid_motors:
+            z1_dest = dest_pos['m3']
+            if z1_dest > 100 or z1_dest < 0:
+                self.message("Upper Z-stage limit detected.")
+                return False
+        
+        if 'm4' in valid_motors:
+            z2_dest = dest_pos['m4']
+            if z2_dest > 100 or z2_dest < 0:
+                self.message("Lower Z-stage limit detected.")
+                return False
+        
+        return True
+    
     def check_mini_moves(self, mini_moves):
         """ Checks that a move is valid within a configuration """
         # Check that it is the right configuration
@@ -224,20 +254,8 @@ class PCUSequencer(Sequencer):
         # Update to new positions
         for m_name, m_dest in mini_moves.items():
             dest_pos[m_name] = m_dest
-        # Get X and Y motor destinations
-        x_dest = dest_pos['m1']
-        y_dest = dest_pos['m2']
-        z1_dest = dest_pos['m3']
-
-        # Check for limits
-        if x_dest > 305 or x_dest < 0:
-            self.message("X-stage limit detected")
-            return False
-        if y_dest > 202 or y_dest < 0:
-            self.message("Y-stage limit detected.")
-            return False
-        if z1_dest > 100 or z1_dest < 0:
-            self.message("Z-stage limit detected.")
+        
+        if not self.check_motor_limits():
             return False
         
         # Get centers of XY coordinates
