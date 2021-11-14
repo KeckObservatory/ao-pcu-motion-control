@@ -261,6 +261,9 @@ class PCUSequencer(Sequencer):
         # Get centers of XY coordinates
         xc = config_lookup[self.configuration]['m1']
         yc = config_lookup[self.configuration]['m2']
+        # Get move coordinates
+        x_dest = dest_pos['m1']
+        y_dest = dest_pos['m2']
         
         # Check for pinhole mask moves
         if self.configuration == "pinhole_mask":
@@ -291,7 +294,7 @@ class PCUSequencer(Sequencer):
             self.to_FAULT()
     
     # -------------------------------------------------------------------------
-    # Motor-moving functions
+    # Regular motor-moving functions
     # -------------------------------------------------------------------------
     
     def get_positions(self):
