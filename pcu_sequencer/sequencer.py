@@ -213,7 +213,7 @@ class PCUSequencer(Sequencer):
         
         return mini_moves
     
-    def check_motor_limits(dest_pos):
+    def check_motor_limits(self, dest_pos):
         """ Get X and Y motor destinations and check limits """
         # I would like to add the limits to the YAML and streamline this
         
@@ -255,7 +255,7 @@ class PCUSequencer(Sequencer):
         for m_name, m_dest in mini_moves.items():
             dest_pos[m_name] = m_dest
         
-        if not self.check_motor_limits():
+        if not self.check_motor_limits(dest_pos):
             return False
         
         # Get centers of XY coordinates
