@@ -43,19 +43,24 @@ log = logging.getLogger('')
 
 # Config file and motor numbers
 # FIX DEPLOY
-#yaml_file = "/kroot/src/util/pcu_api/pcu_sequencer/PCU_configurations.yaml"
-yaml_file = "./PCU_configurations.yaml"
+config_file = "./PCU_configurations.yaml"
+motor_file = "./valid_motors.yaml"
 
-# FIX Z-STAGE
-# valid_motors = [f"m{i}" for i in np.arange(1,5)]
-valid_motors = [f"m{i}" for i in np.arange(1, 4)] # If fiber bundle motor isn't working
+try:
+    # Open and read config file with info on named positions
+    with open(config_file) as f:
+        file = f.read()
+        config_lookup = yaml.load(file)
+        # FIX-YAML version on k1aoserver-new is too old.
+        #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
 
-# Open and read config file with info on named positions
-with open(yaml_file) as f:
-    lines = f.readlines()
-    config_lookup = yaml.load("\n".join(lines))
-    # FIX-YAML version on k1aoserver-new is too old.
-    #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
+    # Open and read motor file with info on valid motors
+    with open(motor_file) as f: # FIX Z-STAGE
+        file = f.read()
+        valid_motors = yaml.load(file)['valid_motors']
+except:
+    print("Unable to read configuration files. Shutting down.")
+    sys.exit(1)
 
 # Motor class
 class PCUMotor():
@@ -128,8 +133,7 @@ class PCUSequencer(Sequencer):
     }
 
     # FIX Z-STAGE
-    #home_Z = {'m3':0, 'm4':0}
-    home_Z = {'m3':0}
+    home_Z = {'m3':0, 'm4':0}
     
     # -------------------------------------------------------------------------
     # Initialize the sequencer
@@ -264,8 +268,9 @@ class PCUSequencer(Sequencer):
             # Check if XY motors are outside circle bounds
             return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ
             
-#         else: # Can't move in any other configuration currently
-#             return False
+        else: # This shouldn't happen
+            self.critical("Reached impossible state in checking mini-moves.")
+            self.to_FAULT()
     
     # -------------------------------------------------------------------------
     # Motor-moving functions
