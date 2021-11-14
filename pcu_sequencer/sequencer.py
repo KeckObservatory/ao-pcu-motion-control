@@ -499,6 +499,10 @@ class PCUSequencer(Sequencer):
         self.check_offsets()
         
         try:
+            
+            # Check for mini-move keywords
+            mini_moves = self.get_mini_moves()
+
             # Check the request keyword and
             # start the reconfig process, if necessary
             request = self.seqrequest.lower()
@@ -508,7 +512,7 @@ class PCUSequencer(Sequencer):
                 self.stop_motors()
                 self.to_IN_POS()
             
-            if request.startswith('to_'):
+            if request.startswith('to_') or len(mini_moves) != 0:
                 self.critical("Send stop signal before moving to new position.")
             
             # If there are moves in the queue and previous moves are done
