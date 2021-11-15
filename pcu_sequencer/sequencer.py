@@ -217,29 +217,36 @@ class PCUSequencer(Sequencer):
         """ Get X and Y motor destinations and check limits """
         # I would like to add the limits to the YAML and streamline this
         
-        if 'm1' in valid_motors:
-            x_dest = dest_pos['m1']
-            if x_dest > 305 or x_dest < 0:
-                self.message("X-stage limit detected")
+        for m_name, m_lim in valid_motors.items():
+            if m_name not in dest_pos: continue
+            m_dest = dest_pos[m_name]
+            if m_dest < m_lim[0] or m_dest > m_lim[1]:
+                self.message(f"Limit detected for {m_name}")
                 return False
         
-        if 'm2' in valid_motors:
-            y_dest = dest_pos['m2']
-            if y_dest > 202 or y_dest < 0:
-                self.message("Y-stage limit detected.")
-                return False
+#         if 'm1' in valid_motors:
+#             x_dest = dest_pos['m1']
+#             if x_dest > 305 or x_dest < 0:
+#                 self.message("X-stage limit detected")
+#                 return False
         
-        if 'm3' in valid_motors:
-            z1_dest = dest_pos['m3']
-            if z1_dest > 100 or z1_dest < 0:
-                self.message("Upper Z-stage limit detected.")
-                return False
+#         if 'm2' in valid_motors:
+#             y_dest = dest_pos['m2']
+#             if y_dest > 193 or y_dest < 0:
+#                 self.message("Y-stage limit detected.")
+#                 return False
         
-        if 'm4' in valid_motors:
-            z2_dest = dest_pos['m4']
-            if z2_dest > 100 or z2_dest < 0:
-                self.message("Lower Z-stage limit detected.")
-                return False
+#         if 'm3' in valid_motors:
+#             z1_dest = dest_pos['m3']
+#             if z1_dest > 100 or z1_dest < 0:
+#                 self.message("Upper Z-stage limit detected.")
+#                 return False
+        
+#         if 'm4' in valid_motors:
+#             z2_dest = dest_pos['m4']
+#             if z2_dest > 100 or z2_dest < 0:
+#                 self.message("Lower Z-stage limit detected.")
+#                 return False
         
         return True
     
@@ -247,6 +254,9 @@ class PCUSequencer(Sequencer):
         """ Checks that a move is valid within a configuration """
         # Check that it is the right configuration
         if self.configuration not in ['pinhole_mask', 'fiber_bundle']:
+            return False
+        if not ('m1' in valid_motors and 'm2' in valid_motors):
+            self.critical("X and Y motors must be enabled for offsets to take place.")
             return False
         
         # Get current motor positions
@@ -261,7 +271,6 @@ class PCUSequencer(Sequencer):
         # Get centers of XY coordinates
         xc = config_lookup[self.configuration]['m1']
         yc = config_lookup[self.configuration]['m2']
-        # Get move coordinates
         x_dest = dest_pos['m1']
         y_dest = dest_pos['m2']
         
@@ -335,6 +344,10 @@ class PCUSequencer(Sequencer):
         self.destination = destination
 
         return
+    
+    def check_move(self, dest_pos):
+        """ Checks whether a move will cause a collision """
+        pass
     
     def trigger_move(self, m_dict):
         """ Triggers move and sets a timer to check if complete """
