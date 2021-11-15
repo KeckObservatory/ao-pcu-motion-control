@@ -1,7 +1,7 @@
 ---
 valid_motors:
     - m1
-    - m2
+#     - m2
 #     - m3
-    - m4
+#     - m4
 #     - rot
