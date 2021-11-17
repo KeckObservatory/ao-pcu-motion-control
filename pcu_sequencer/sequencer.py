@@ -164,6 +164,42 @@ class PCUSequencer(Sequencer):
         # A timer for runtime usage
         self.move_timer = CountdownTimer()
     
+    def get_config(self):
+        """ Gets the initial configuration of the PCU """
+        # Loop through configurations
+        for config, values in config_lookup.items():
+            all_match = True
+            
+            # Loop through motors
+            for m_name in valid_motors:
+                if not self.motor_in_position(m_name, values[m_name]):
+                    all_match = False
+                    break
+            
+            # Found a match for motor positions
+            if all_match:
+                return config
+            
+            if self.pmask_extended() and not self.fiber_extended():
+                pass
+    
+    # -------------------------------------------------------------------------
+    # Motor-specific functions
+    # -------------------------------------------------------------------------
+    def pmask_extended():
+        if 'm3' not in valid_motors:
+            self.critical("Motor 3 is not connected. Ensure that the motor is either "+ 
+                          "fully retracted or uninstalled before proceeding.")
+            return False
+        else: return not self.motor_in_position('m3', 0)
+    
+    def fiber_extended():
+        if 'm4' not in valid_motors:
+            self.critical("Motor 4 is not connected. Ensure that the motor is either "+ 
+                          "fully retracted or uninstalled before proceeding.")
+            return False
+        else: return not self.motor_in_position('m4', 0)
+    
     # -------------------------------------------------------------------------
     # Mini-move functions
     # -------------------------------------------------------------------------
@@ -345,10 +381,6 @@ class PCUSequencer(Sequencer):
 
         return
     
-    def check_move(self, dest_pos):
-        """ Checks whether a move will cause a collision """
-        pass
-    
     def trigger_move(self, m_dict):
         """ Triggers move and sets a timer to check if complete """
         for m_name, m_dest in m_dict.items():
@@ -375,6 +407,10 @@ class PCUSequencer(Sequencer):
     
     def motor_in_position(self, m_name, m_dest):
         """ Checks whether a motor (m_name) is in position (m_dest) """
+        # Check for valid motor
+        if m_name not in valid_motors:
+            return False
+        
         # Get PV getter for motor
         motor = PCUSequencer.motors[m_name]
         # Get current position
@@ -475,6 +511,7 @@ class PCUSequencer(Sequencer):
         ## Any initialization stuff here ##
         ###################################
         
+        self.get_config()
         
         ###################################
         self.to_IN_POS()
