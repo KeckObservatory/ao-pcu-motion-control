@@ -155,7 +155,8 @@ class PCUSequencer(Sequencer):
         for m_name in PCUSequencer.motors:
             chan_name = f"{m_name}Offset"
             # Register IOC channel for setting mini-moves
-            setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}'))
+            setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
+                                                                 initial_value=RESET_VAL))
             self.add_property(chan_name, dest_read=True)
             # Register IOC channel for readback
             setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
