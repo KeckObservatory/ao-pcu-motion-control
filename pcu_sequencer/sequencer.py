@@ -492,12 +492,18 @@ class PCUSequencer(Sequencer):
         # Call the superclass stop method
         super().stop()
     
+    def home_motors(self):
+        """ Homes the motors (z-stages first, then X and Y) """
+        # Need to check if it will wait for the motor to home
+        for motor in reversed(self.motors):
+            pass # Ask Sylvain when he's less busy
+    
     # -------------------------------------------------------------------------
     # I/O processing
     # -------------------------------------------------------------------------
     
     def process_request(self):
-        """ Processes input from the request keyword and returns it if valid """
+        """ Processes input from the request keyword """
         pass
     
     def checkabort(self):
@@ -563,7 +569,7 @@ class PCUSequencer(Sequencer):
                 if self.check_mini_moves(mini_moves):
                     # Load mini-moves into queue
                     self.motor_moves.append(mini_moves)
-                    # Need to set destination to preserve configuration
+                    # Set destination to preserve configuration
                     self.destination = self.configuration
                     # Go to moving
                     self.to_MOVING()
@@ -605,6 +611,8 @@ class PCUSequencer(Sequencer):
             
             # Check for mini-move keywords
             mini_moves = self.get_mini_moves()
+            if len(mini_moves) != 0:
+                self.critical("Send stop signal before moving to new position.")
 
             # Check the request keyword and
             # start the reconfig process, if necessary
@@ -615,7 +623,7 @@ class PCUSequencer(Sequencer):
                 self.stop_motors()
                 self.to_IN_POS()
             
-            if request.startswith('to_') or len(mini_moves) != 0:
+            if request.startswith('to_'):
                 self.critical("Send stop signal before moving to new position.")
             
             # If there are moves in the queue and previous moves are done
