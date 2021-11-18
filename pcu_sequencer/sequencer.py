@@ -590,6 +590,10 @@ class PCUSequencer(Sequencer):
                         # Start move
                         self.to_MOVING()
                     else: self.critical(f'Invalid configuration: {destination}')
+                    
+                    if request == 'shutdown':
+                        self.message("Shutting down sequencer.")
+                        super().stop()
 
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException:
@@ -660,6 +664,8 @@ class PCUSequencer(Sequencer):
     
     def process_FAULT(self):
         """ Processes the FAULT state """
+        self.checkabort()
+        self.checkmeta()
         # Respond to request channel
         request = self.seqrequest.lower()
         if request == 'reinit':
