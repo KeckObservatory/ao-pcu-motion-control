@@ -5,3 +5,9 @@ valid_motors:
 #     m3: [0, 100]
     m4: [0, 100]
 #     rot
+tolerance:
+    m1: .01
+    m2: .008
+    m3: .005
+    m4: .005
+    rot: .0031

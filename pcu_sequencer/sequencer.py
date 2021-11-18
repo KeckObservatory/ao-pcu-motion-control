@@ -26,11 +26,11 @@ TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
 
 # FIX Z-STAGE: Add to tolerance (copy m3)
-TOLERANCE = {
-    "m1": .01, # mm
-    "m2": .008, # mm
-    "m3": .005, # mm
-}
+# TOLERANCE = {
+#     "m1": .01, # mm
+#     "m2": .008, # mm
+#     "m3": .005, # mm
+# }
 
 MOVE_TIME = 45 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
@@ -61,7 +61,10 @@ try:
     # Open and read motor file with info on valid motors
     with open(motor_file) as f: # FIX Z-STAGE
         file = f.read()
-        valid_motors = yaml.load(file)['valid_motors']
+        motor_info = yaml.load(file)
+        valid_motors = motor_info['valid_motors']
+        tolerance = motor_info['tolerance']
+        
 except:
     print("Unable to read configuration files. Shutting down.")
     sys.exit(1)
@@ -439,7 +442,7 @@ class PCUSequencer(Sequencer):
         cur_pos = motor.get_pos()
         
         # Compare to destination within tolerance, return False if not reached
-        t = TOLERANCE[m_name]
+        t = tolerance[m_name]
         # Lower and upper limits
         in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
         # Return whether the given motor is in position
