@@ -2,6 +2,10 @@
 ### Authors : Emily Ramey, Grace Jung
 ### Date : 11/22/21
 
+### TODO:
+# - Add a check for negative motors (throw an error from the motor function when detected)
+# - Add an initial position check so motors don't have to be retracted
+
 ### Imports
 from transitions import Machine, State
 from kPySequencer.Sequencer import Sequencer, PVDisconnectException, PVConnectException
@@ -180,25 +184,68 @@ class PCUSequencer(Sequencer):
             if all_match:
                 return config
             
-            if self.pmask_extended() and not self.fiber_extended():
-                pass
+            # Pinhole mask config with offset
+            if (self.pmask_extended() and 
+                (not self.fiber_extended()) and 
+                self.element_in_hole('pmask')):
+                return 'pinhole_mask'
+            
+            # Fiber bundle config with offset
+            if (self.fiber_extended() and
+                (not self.pmask_extended()) and
+                self.element_in_hole('fiber')):
+                return 'fiber_bundle'
+            
+            return None
     
     # -------------------------------------------------------------------------
     # Motor-specific functions
     # -------------------------------------------------------------------------
-    def pmask_extended():
+    def pmask_extended(self, dest_pos=None):
+        """ Checks if the pinhole mask is extended """
         if 'm3' not in valid_motors:
             self.critical("Motor 3 is not connected. Ensure that the motor is either "+ 
                           "fully retracted or uninstalled before proceeding.")
             return False
+        
+        # Check current or future position
+        if dest_pos is not None: return dest_pos['m3'] > 0
         else: return not self.motor_in_position('m3', 0)
     
-    def fiber_extended():
+    def fiber_extended(self, dest_pos=None):
         if 'm4' not in valid_motors:
             self.critical("Motor 4 is not connected. Ensure that the motor is either "+ 
                           "fully retracted or uninstalled before proceeding.")
             return False
+        
+        # Check current or future position
+        if dest_pos is not None: return dest_pos['m4'] > 0
         else: return not self.motor_in_position('m4', 0)
+    
+    def pmask_center(self):
+        return config_lookup['pinhole_mask']['m1'], config_lookup['pinhole_mask']['m2']
+    
+    def fiber_center(self):
+        return config_lookup['fiber_bundle']['m1'], config_lookup['fiber_bundle']['m2']
+    
+    def element_in_hole(self, element, dest_pos=None):
+        """ Checks whether pmask or fiber is in the K-mirror rotator hole """
+        # Get center and radius of configuration
+        if element=='pmask':
+            xc, yc = self.pmask_center()
+            radius = CLEARANCE_PMASK
+        elif element=='fiber':
+            xc, yc = self.fiber_center()
+            radius = CLEARANCE_FIBER
+        
+        # Check current or future position
+        if dest_pos is None: # Current positions
+            x_pos, y_pos = self.motors['m1'].get_pos(), self.motors['m2'].get_pos()
+        else: # Future positions
+            x_pos, y_pos = dest_pos['m1'], dest_pos['m2']
+        
+        return (xc - x_pos)**2 + (yc - y_pos)**2 < radius
+        
     
     # -------------------------------------------------------------------------
     # Mini-move functions
@@ -248,43 +295,6 @@ class PCUSequencer(Sequencer):
                 mini_moves[m_name] = offset_request
         
         return mini_moves
-    
-    def check_motor_limits(self, dest_pos):
-        """ Get X and Y motor destinations and check limits """
-        # I would like to add the limits to the YAML and streamline this
-        
-        for m_name, m_lim in valid_motors.items():
-            if m_name not in dest_pos: continue
-            m_dest = dest_pos[m_name]
-            if m_dest < m_lim[0] or m_dest > m_lim[1]:
-                self.message(f"Limit detected for {m_name}")
-                return False
-        
-#         if 'm1' in valid_motors:
-#             x_dest = dest_pos['m1']
-#             if x_dest > 305 or x_dest < 0:
-#                 self.message("X-stage limit detected")
-#                 return False
-        
-#         if 'm2' in valid_motors:
-#             y_dest = dest_pos['m2']
-#             if y_dest > 193 or y_dest < 0:
-#                 self.message("Y-stage limit detected.")
-#                 return False
-        
-#         if 'm3' in valid_motors:
-#             z1_dest = dest_pos['m3']
-#             if z1_dest > 100 or z1_dest < 0:
-#                 self.message("Upper Z-stage limit detected.")
-#                 return False
-        
-#         if 'm4' in valid_motors:
-#             z2_dest = dest_pos['m4']
-#             if z2_dest > 100 or z2_dest < 0:
-#                 self.message("Lower Z-stage limit detected.")
-#                 return False
-        
-        return True
     
     def check_mini_moves(self, mini_moves):
         """ Checks that a move is valid within a configuration """
@@ -405,6 +415,18 @@ class PCUSequencer(Sequencer):
 
         return
     
+    def check_motor_limits(self, dest_pos):
+        """ Get motor destinations and check limits """
+        
+        for m_name, m_lim in valid_motors.items():
+            if m_name not in dest_pos: continue
+            m_dest = dest_pos[m_name]
+            if m_dest < m_lim[0] or m_dest > m_lim[1]:
+                self.message(f"Limit detected for {m_name}")
+                return False
+        
+        return True
+    
     def motor_in_position(self, m_name, m_dest):
         """ Checks whether a motor (m_name) is in position (m_dest) """
         # Check for valid motor
@@ -511,7 +533,8 @@ class PCUSequencer(Sequencer):
         ## Any initialization stuff here ##
         ###################################
         
-        self.get_config()
+        # Will return configuration or None
+        self.configuration = self.get_config()
         
         ###################################
         self.to_IN_POS()
