@@ -346,7 +346,8 @@ class PCUSequencer(Sequencer):
             if m_name == 'm4': return True
             
             # Check if XY motors are outside circle bounds
-            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ
+            self.message(f"{xc}, {x_dest}, {yc}, {y_dest}, {r_circ}")
+            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ**2
             
         else: # This shouldn't happen
             self.critical("Reached impossible state in checking mini-moves.")

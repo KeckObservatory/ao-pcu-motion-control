@@ -6,10 +6,10 @@ pinhole_mask:
     m4: 0 # Z stage (fiber bundle)
     rot: 0 # Rotation stage
 fiber_bundle:
-    m1: 165
-    m2: 117
+    m1: 150
+    m2: 120
     m3: 0
-    m4: 98
+    m4: 90
     rot: 0
 kpf_mirror:
     m1: 105
