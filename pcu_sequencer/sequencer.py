@@ -25,13 +25,6 @@ import os
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
 
-# FIX Z-STAGE: Add to tolerance (copy m3)
-# TOLERANCE = {
-#     "m1": .01, # mm
-#     "m2": .008, # mm
-#     "m3": .005, # mm
-# }
-
 MOVE_TIME = 45 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
