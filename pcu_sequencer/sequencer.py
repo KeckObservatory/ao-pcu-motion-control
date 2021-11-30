@@ -117,22 +117,23 @@ class PCUSequencer(Sequencer):
         
         # Register individual motor channels
         for m_name in PCUSequencer.motors:
-            chan_name = f"{m_name}Offset"
-            # Register IOC channel for setting mini-moves
-            setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
-                                                                 initial_value=RESET_VAL))
-            self.add_property(chan_name, dest_read=True)
-            # Register IOC channel for readback
-            setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
-            self.add_property(chan_name+"Rb")
+            for chan_type in ['Offset', 'Pos']: # relative vs. abs moves
+                chan_name = f"{m_name}{chan_type}"
+                # Register IOC channel for setting mini-moves
+                setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
+                                                                     initial_value=RESET_VAL))
+                self.add_property(chan_name, dest_read=True)
+                # Register IOC channel for readback
+                setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
+                self.add_property(chan_name+"Rb")
         
         # Check user-defined positions
         for c_name, pos in fiber_configs.items():
             config = PCUPos(pos)
         
         self.prepare(PCUStates)
-        self.destination = None
-        self.configuration = None
+        self.destination = ''
+        self.configuration = ''
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
@@ -143,7 +144,7 @@ class PCUSequencer(Sequencer):
     def get_config(self):
         """ Gets the initial configuration of the PCU """
         # Loop through configurations
-        for config, values in config_lookup.items():
+        for config, values in all_configs.items():
             all_match = True
             
             # Loop through motors
@@ -195,10 +196,10 @@ class PCUSequencer(Sequencer):
         else: return not self.motor_in_position('m4', 0)
     
     def pmask_center(self):
-        return config_lookup['pinhole_mask']['m1'], config_lookup['pinhole_mask']['m2']
+        return base_configs['pinhole_mask']['m1'], base_configs['pinhole_mask']['m2']
     
     def fiber_center(self):
-        return config_lookup['fiber_bundle']['m1'], config_lookup['fiber_bundle']['m2']
+        return base_configs['fiber_bundle']['m1'], base_configs['fiber_bundle']['m2']
     
     def element_in_hole(self, element, dest_pos=None):
         """ Checks whether pmask or fiber is in the K-mirror rotator hole """
@@ -262,8 +263,9 @@ class PCUSequencer(Sequencer):
             # Check for requested moves
             if offset_request is not None:
                 # Add to existing configuration
-                if self.configuration in config_lookup:
-                    offset_request += config_lookup[self.configuration][m_name]
+                if self.configuration in all_configs:
+                    offset_request += all_configs[self.configuration][m_name]
+                # TODO: else add it to the current position
                 mini_moves[m_name] = offset_request
         
         return mini_moves
@@ -287,8 +289,8 @@ class PCUSequencer(Sequencer):
             return False
         
         # Get centers of XY coordinates
-        xc = config_lookup[self.configuration]['m1']
-        yc = config_lookup[self.configuration]['m2']
+        xc = all_configs[self.configuration]['m1']
+        yc = all_configs[self.configuration]['m2']
         x_dest = dest_pos['m1']
         y_dest = dest_pos['m2']
         
@@ -336,7 +338,7 @@ class PCUSequencer(Sequencer):
     def load_config(self, destination):
         """ Loads destination's moves into queue, clears current configuration """
         # Get ordered moves from destination state
-        motor_posvals = config_lookup[destination]
+        motor_posvals = all_configs[destination]
         
         # Append info to move list
         self.motor_moves.clear()
@@ -359,7 +361,7 @@ class PCUSequencer(Sequencer):
             self.motor_moves.append({m_name:dest})
         
         # Clear configuration and set destination
-        self.configuration = None
+        self.configuration = ''
         self.destination = destination
 
         return
@@ -446,8 +448,8 @@ class PCUSequencer(Sequencer):
         self.current_move = None
         self.motor_moves.clear()
         # Set config to unknown
-        self.configuration = None
-        self.destination = None
+        self.configuration = ''
+        self.destination = ''
         
         # Stop motors
         for _, pv in PCUSequencer.motors.items():
@@ -493,15 +495,17 @@ class PCUSequencer(Sequencer):
         self.metastate = self.state.name
         # Make sure configuration is none unless in position
         if self.state != PCUStates.IN_POS:
-            self.configuration = None
+            self.configuration = ''
+        if self.state==PCUStates.IN_POS and self.configuration=='':
+            self.configuration = 'USER_DEF'
     
     def check_offsets(self):
         """ Checks offsets from the current configuration """
-        if self.configuration not in config_lookup: # No metastate
+        if self.configuration not in all_configs: # No metastate
             for m_name in PCUSequencer.motors:
                 setattr(self, m_name+"OffsetRb", 0)
         else: # Get offset positions
-            base_positions = config_lookup[self.configuration]
+            base_positions = all_configs[self.configuration]
             motor_positions = self.get_positions()
             for m_name in motor_positions:
                 offset = motor_positions[m_name] - base_positions[m_name]
@@ -530,7 +534,9 @@ class PCUSequencer(Sequencer):
         cur_pos = self._posRb.get()
         return cur_pos
     @configuration.setter
-    def configuration(self, val): self._posRb.set(val.encode('UTF-8'))
+    def configuration(self, val):
+        if val==None: val = ''
+        self._posRb.set(val.encode('UTF-8'))
     
     # -------------------------------------------------------------------------
     # Init state
@@ -583,7 +589,7 @@ class PCUSequencer(Sequencer):
                 # If move requested, process destination state
                 if request.startswith('to_'):
                     destination = request[3:]
-                    if destination in config_lookup:
+                    if destination in all_configs:
                         self.message(f"Loading {destination} state.")
                         # Load next configuration (sets self.destination)
                         self.load_config(destination)
@@ -641,7 +647,7 @@ class PCUSequencer(Sequencer):
                 self.message("Finished moving.")
                 # Change configuration and destination keywords
                 self.configuration = self.destination
-                self.destination = None
+                self.destination = ''
                 # Move to in-position state
                 self.to_IN_POS()
             else: # Move is in progress
