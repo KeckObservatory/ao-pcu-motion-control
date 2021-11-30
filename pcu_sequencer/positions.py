@@ -5,7 +5,7 @@ valid_motors = util.valid_motors
 # Position class
 class PCUPos():
     
-    def __init__(self, pos_dict=None, **kwargs):
+    def __init__(self, pos_dict=None, name=None, **kwargs):
         """ 
         Initializes a position with a dictionary or with m# arguments.
         Valid motors that are not specified will be set to zero.
@@ -20,6 +20,11 @@ class PCUPos():
             # Set motor position, zero if not specified
             pos = pos_dict[m_name] if m_name in pos_dict else 0
             self.pos_dict[m_name] = pos
+        
+        self.name = name
+    
+    def __str__(self):
+        return str(self.pos_dict)
     
     def m_dict(self):
         """ Returns a dictionary of positions """

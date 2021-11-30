@@ -75,11 +75,16 @@ motor_file = "./motor_configurations.yaml"
 # Load configuration files
 base_configs, fiber_configs, mask_configs = util.load_configurations()
 motor_info = util.load_motors()
+
 # Assign motor info to variables
 valid_motors = motor_info['valid_motors']
 tolerance = motor_info['tolerance']
 fiber_limits = motor_info['fiber_limits']
 mask_limits = motor_info['mask_limits']
+
+# Assign config info to variables
+all_configs = dict(base_configs, **fiber_configs, **mask_configs)
+user_configs = dict(fiber_configs, **mask_configs)
 
 class PCUStates(Enum):
     INIT = 0
@@ -106,7 +111,9 @@ class PCUSequencer(Sequencer):
         super().__init__(prefix, tickrate=tickrate)
         
         # Create new channel for metastate
-        self._seqmetastate = self.ioc.registerString(f'{prefix}:meta')
+        self._seqmetastate = self.ioc.registerString(f'{prefix}:stst')
+        self._pos = self.ioc.registerString(f'{prefix}:pos')
+        self._posRb = self.ioc.registerString(f'{prefix}:posRb')
         
         # Register individual motor channels
         for m_name in PCUSequencer.motors:
@@ -118,6 +125,10 @@ class PCUSequencer(Sequencer):
             # Register IOC channel for readback
             setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
             self.add_property(chan_name+"Rb")
+        
+        # Check user-defined positions
+        for c_name, pos in fiber_configs.items():
+            config = PCUPos(pos)
         
         self.prepare(PCUStates)
         self.destination = None
@@ -464,6 +475,10 @@ class PCUSequencer(Sequencer):
         """ Processes input from the request keyword """
         pass
     
+    def process_pos_request(self):
+        """ Processes a request for a configuration change """
+        pass
+    
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
         if self.seqabort:
@@ -473,12 +488,12 @@ class PCUSequencer(Sequencer):
         return False
     
     def checkmeta(self):
-        if self.state == PCUStates.IN_POS:
-            if self.configuration is None:
-                self.metastate = "USER_DEF"
-            else: self.metastate = self.configuration.upper()
-        else:
-            self.metastate = self.state.name
+        """ Checks metastate and position of PCU """
+        # Get metastate
+        self.metastate = self.state.name
+        # Make sure configuration is none unless in position
+        if self.state != PCUStates.IN_POS:
+            self.configuration = None
     
     def check_offsets(self):
         """ Checks offsets from the current configuration """
@@ -493,6 +508,31 @@ class PCUSequencer(Sequencer):
                 setattr(self, m_name+"OffsetRb", offset)
     
     # -------------------------------------------------------------------------
+    # Control channel properties (static)
+    # -------------------------------------------------------------------------
+    @property
+    def metastate(self):
+        request = self._seqmetastate.get()
+        # Don't want a destructive read
+        return request
+    @metastate.setter
+    def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
+    
+    @property
+    def config_request(self):
+        request = self._pos.get()
+        if request not in [None, '']:
+            self._pos.set(''.encode('UTF-8'))
+        return request
+    
+    @property
+    def configuration(self):
+        cur_pos = self._posRb.get()
+        return cur_pos
+    @configuration.setter
+    def configuration(self, val): self._posRb.set(val.encode('UTF-8'))
+    
+    # -------------------------------------------------------------------------
     # Init state
     # -------------------------------------------------------------------------
     
@@ -503,7 +543,9 @@ class PCUSequencer(Sequencer):
         
         # Will return configuration or None
         self.configuration = self.get_config()
-        
+        # Home / initialize stages
+        # Re-read the config files
+        # Make XYZ moves possible
         ###################################
         self.to_IN_POS()
     
@@ -634,17 +676,6 @@ class PCUSequencer(Sequencer):
     # -------------------------------------------------------------------------
     def process_TERMINATE(self):
         pass
-    
-    # -------------------------------------------------------------------------
-    # Control channel properties (static)
-    # -------------------------------------------------------------------------
-    @property
-    def metastate(self):
-        request = self._seqmetastate.get()
-        # Don't want a destructive read
-        return request
-    @metastate.setter
-    def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
 
 # -------------------------------------------------------------------------
 # Main function

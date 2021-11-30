@@ -30,7 +30,7 @@ telescope:
     m4: 0
     rot: 0
 ...
---- # User-defined configurations
+--- # User-defined fiber configurations
 optosiris:
     m1: 131.65
     m2: 113.05
@@ -50,7 +50,7 @@ osimg:
     m4: 82.5
     rot: 0
 ...
----
+--- # User-defined pinhole mask configurations
 test_config:
     m1: 105
     m2: 184
