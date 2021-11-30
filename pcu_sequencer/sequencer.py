@@ -21,6 +21,8 @@ import signal
 import sys
 import os
 
+import PCU_util as util
+
 # Static/global variables
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
@@ -41,26 +43,41 @@ log = logging.getLogger('')
 # Config file and motor numbers
 # FIX DEPLOY
 config_file = "./PCU_configurations.yaml"
-motor_file = "./valid_motors.yaml"
+motor_file = "./motor_configurations.yaml"
 
-try:
-    # Open and read config file with info on named positions
-    with open(config_file) as f:
-        file = f.read()
-        config_lookup = yaml.load(file)
-        # FIX-YAML version on k1aoserver-new is too old.
-        #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
+# Load configuration files
+# try:
+#     # Open and read config file with info on named positions
+#     with open(config_file) as f:
+#         file = f.read()
+#         configurations = list(yaml.load_all(file))
+#         # Load both config files
+#         base_configs = configurations[0]
+#         fiber_configs = configurations[1]
+#         mask_configs = configurations[2]
+#         # FIX-YAML version on k1aoserver-new is too old.
 
-    # Open and read motor file with info on valid motors
-    with open(motor_file) as f: # FIX Z-STAGE
-        file = f.read()
-        motor_info = yaml.load(file)
-        valid_motors = motor_info['valid_motors']
-        tolerance = motor_info['tolerance']
+#     # Open and read motor file with info on valid motors
+#     with open(motor_file) as f: # FIX Z-STAGE
+#         file = f.read()
+#         motor_info = yaml.load(file)
+#         valid_motors = motor_info['valid_motors']
+#         tolerance = motor_info['tolerance']
+#         fiber_limits = motor_info['fiber_limits']
+#         mask_limits = motor_info['mask_limits']
         
-except:
-    print("Unable to read configuration files. Shutting down.")
-    sys.exit(1)
+# except:
+#     print("Unable to read configuration files. Shutting down.")
+#     sys.exit(1)
+
+# Load configuration files
+base_configs, fiber_configs, mask_configs = util.load_configurations()
+motor_info = util.load_motors()
+# Assign motor info to variables
+valid_motors = motor_info['valid_motors']
+tolerance = motor_info['tolerance']
+fiber_limits = motor_info['fiber_limits']
+mask_limits = motor_info['mask_limits']
 
 # Motor class
 class PCUMotor():
