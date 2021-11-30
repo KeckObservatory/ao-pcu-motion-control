@@ -28,3 +28,12 @@ def load_motors():
     except:
         print("Unable to read motor file. Shutting down.")
         sys.exit(1)
+
+# Load configuration files into variables
+base_configs, fiber_configs, mask_configs = load_configurations()
+motor_info = load_motors()
+# Assign motor info to variables
+valid_motors = motor_info['valid_motors']
+tolerance = motor_info['tolerance']
+fiber_limits = motor_info['fiber_limits']
+mask_limits = motor_info['mask_limits']

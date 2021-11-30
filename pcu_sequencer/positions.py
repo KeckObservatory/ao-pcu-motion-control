@@ -1,4 +1,6 @@
-motor_file = "./motor_configurations.yaml"
+import PCU_util as util
+
+valid_motors = util.valid_motors
 
 # Position class
 class PCUPos():
