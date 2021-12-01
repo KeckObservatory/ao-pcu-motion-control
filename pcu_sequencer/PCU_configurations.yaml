@@ -1,3 +1,8 @@
+# $Id$
+#
+# named positions for device k1:ao:pcu:pos:
+# saved by k1obsao@k1aoserver-new on Wed Apr 24 00:41:37 2013 UTC
+
 --- # Basic configurations
 pinhole_mask:
     m1: 105 # X stage
@@ -52,8 +57,8 @@ osimg:
 ...
 --- # User-defined pinhole mask configurations
 test_config:
-    m1: 105
-    m2: 184
+    m1: 0
+    m2: 0
     m3: 90
     m4: 0
     rot: 0

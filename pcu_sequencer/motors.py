@@ -1,4 +1,5 @@
 from epics import PV
+from kPySequencer.Sequencer import Sequencer, PVDisconnectException, PVConnectException
 
 # Motor class
 class PCUMotor():
@@ -11,7 +12,10 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'enable_chan': ':enableRb',
+        'enable': ':enable',
+        'enableRb': ':enableRb',
+#         'torque': ':enableTorque',
+#         'torqueRb': 'enableTorqueRb',
         'spmg': '.SPMG',
     }
     
@@ -34,12 +38,25 @@ class PCUMotor():
     def check_connection(self):
         for pv in self.channel_list:
             if not pv.connect():
-                print(f"Channel {pv.pvname} has disconnected.")
-                raise PVDisconnectException
+                raise PVDisconnectException(f"Channel {pv.pvname} has disconnected.")
     
     def isEnabled(self):
         """ Checks whether the motor is enabled """
-        return not self.enable_chan.get()
+        # Software enable channel is backwards
+        # Torque enable works fine
+        return (not self.enableRb.get()) # and self.torqueRb.get()
+    
+    def enable(self):
+        """ Enables the motor """
+        self.check_connection()
+        self.enable.set(0) # Enable software
+        self.torque.set(1) # Enable torque
+    
+    def disable(self):
+        """ Disables the motor """
+        self.check_connection()
+        self.torque.set(0) # Disable torque
+        self.enable.set(1) # Disable software
     
     def get_pos(self):
         self.check_connection()

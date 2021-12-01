@@ -49,7 +49,7 @@ class PCUPos():
         
         return True
     
-    def in_hole(self, instrument):
+    def in_hole(self, instrument): # May need to move to sequencer.py
         """ Determines whether a position is in the limits for the 'fiber' or 'mask' configurations """
         # Get the correct set of limits
         if instrument=='fiber':
@@ -62,7 +62,7 @@ class PCUPos():
 
         return self.in_limits(limits)
     
-    def is_valid(self):
+    def is_valid(self): # May need to move to sequencer.py
         """ Checks whether a position is valid or not """
         valid = True
         
@@ -73,4 +73,22 @@ class PCUPos():
         if 'm4' in PCUPos.valid_motors and self.m4 > 0:
             if not self.in_hole('fiber'): valid = False
         
+        ### TODO: Add a check for motor limits
+        
         return valid
+    
+    def move_in_hole(self, other):
+        """ Checks whether a move takes place in the hole of the k-rotator """
+        # Check both are valid
+        if not self.is_valid() or not other.is_valid():
+            return False
+        
+        # Check for pinhole mask mini-moves
+        if self.in_hole('mask') and other.in_hole('mask'):
+            return True
+        
+        # Check for fiber mini-moves
+        if self.in_hole('fiber') and other.in_hole('fiber'):
+            return True
+        
+        return False
