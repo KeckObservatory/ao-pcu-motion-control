@@ -475,11 +475,57 @@ class PCUSequencer(Sequencer):
     
     def process_request(self):
         """ Processes input from the request keyword """
-        pass
+        # Check the request keyword
+        request = self.seqrequest.lower()
+
+        if request == '':
+            return
+
+        if request == 'shutdown':
+            if self.state != PCUStates.MOVING:
+                self.message("Shutting down sequencer.")
+                super().stop()
+            else:
+                self.critical("Aborting sequencer.")
+                self.stop()
+        
+        # Stop the PCU and go to USER_DEF position
+        if request == 'stop':
+            if self.state==PCUStates.MOVING:
+                self.stop_motors()
+                self.to_IN_POS()
+            else:
+                self.critical("PCU is not moving.")
+        
+        if request == 'reinit':
+            if self.state != PCUStates.MOVING:
+                self.to_INIT()
+            else:
+                self.critical("Send stop signal before reinitializing.")
     
     def process_pos_request(self):
         """ Processes a request for a configuration change """
-        pass
+        request = self.config_request.lower()
+
+        if request == '':
+            return
+        
+        ### Request from a position
+        if self.state == PCUStates.IN_POS:
+            destination = request
+            if destination in all_configs:
+                self.message(f"Loading {destination} state.")
+                # Load next configuration (sets self.destination)
+                self.load_config(destination)
+                # Start move
+                self.to_MOVING()
+            else: self.critical(f'Invalid configuration: {destination}')
+            ### Request from MOVING
+        elif self.state == PCUStates.MOVING:
+            self.critical("Send stop signal before moving to new position.")
+            ### Request from FAULT
+        elif self.state == PCUStates.FAULT:
+            self.critical("Reinitialize the PCU sequencer before moving.")
     
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
@@ -497,7 +543,7 @@ class PCUSequencer(Sequencer):
         if self.state != PCUStates.IN_POS:
             self.configuration = ''
         if self.state==PCUStates.IN_POS and self.configuration=='':
-            self.configuration = 'USER_DEF'
+            self.configuration = 'user_def'
     
     def check_offsets(self):
         """ Checks offsets from the current configuration """
@@ -582,24 +628,8 @@ class PCUSequencer(Sequencer):
                 else: # Warn user
                     self.critical(f"Invalid move for configuration {self.configuration}: {mini_moves}")
             
-            # Check the request keyword
-            request = self.seqrequest.lower()
-
-            if request != '':
-                # If move requested, process destination state
-                if request.startswith('to_'):
-                    destination = request[3:]
-                    if destination in all_configs:
-                        self.message(f"Loading {destination} state.")
-                        # Load next configuration (sets self.destination)
-                        self.load_config(destination)
-                        # Start move
-                        self.to_MOVING()
-                    else: self.critical(f'Invalid configuration: {destination}')
-                    
-                    if request == 'shutdown':
-                        self.message("Shutting down sequencer.")
-                        super().stop()
+            self.process_request()
+            self.process_pos_request()
 
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException:
@@ -626,15 +656,8 @@ class PCUSequencer(Sequencer):
 
             # Check the request keyword and
             # start the reconfig process, if necessary
-            request = self.seqrequest.lower()
-            
-            # Stop the PCU and go to USER_DEF position
-            if request == 'stop':
-                self.stop_motors()
-                self.to_IN_POS()
-            
-            if request.startswith('to_'):
-                self.critical("Send stop signal before moving to new position.")
+            self.process_request()
+            self.process_pos_request()
             
             # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():
@@ -672,10 +695,11 @@ class PCUSequencer(Sequencer):
         """ Processes the FAULT state """
         self.checkabort()
         self.checkmeta()
+        
         # Respond to request channel
-        request = self.seqrequest.lower()
-        if request == 'reinit':
-            self.to_INIT()
+        self.process_request()
+        self.process_pos_request()
+        
     
     # -------------------------------------------------------------------------
     # TERMINATE state
