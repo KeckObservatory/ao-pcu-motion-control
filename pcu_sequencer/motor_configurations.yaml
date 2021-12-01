@@ -15,5 +15,5 @@ fiber_limits: # XY limits with fiber extended
     m1: [115, 185]
     m2: [85, 155]
 mask_limits: # XY limits with mask extended
-    m1: [115, 185]
-    m2: [149, 200]
+    m1: [95, 115]
+    m2: [175, 190]
