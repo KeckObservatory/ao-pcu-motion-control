@@ -21,6 +21,10 @@ import signal
 import sys
 import os
 
+import PCU_util as util
+from positions import PCUPos
+from motors import PCUMotor
+
 # Static/global variables
 TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
@@ -41,81 +45,46 @@ log = logging.getLogger('')
 # Config file and motor numbers
 # FIX DEPLOY
 config_file = "./PCU_configurations.yaml"
-motor_file = "./valid_motors.yaml"
+motor_file = "./motor_configurations.yaml"
 
-try:
-    # Open and read config file with info on named positions
-    with open(config_file) as f:
-        file = f.read()
-        config_lookup = yaml.load(file)
-        # FIX-YAML version on k1aoserver-new is too old.
-        #config_lookup = yaml.load(f, Loader=yaml.FullLoader)
+# Load configuration files
+# try:
+#     # Open and read config file with info on named positions
+#     with open(config_file) as f:
+#         file = f.read()
+#         configurations = list(yaml.load_all(file))
+#         # Load both config files
+#         base_configs = configurations[0]
+#         fiber_configs = configurations[1]
+#         mask_configs = configurations[2]
+#         # FIX-YAML version on k1aoserver-new is too old.
 
-    # Open and read motor file with info on valid motors
-    with open(motor_file) as f: # FIX Z-STAGE
-        file = f.read()
-        motor_info = yaml.load(file)
-        valid_motors = motor_info['valid_motors']
-        tolerance = motor_info['tolerance']
+#     # Open and read motor file with info on valid motors
+#     with open(motor_file) as f: # FIX Z-STAGE
+#         file = f.read()
+#         motor_info = yaml.load(file)
+#         valid_motors = motor_info['valid_motors']
+#         tolerance = motor_info['tolerance']
+#         fiber_limits = motor_info['fiber_limits']
+#         mask_limits = motor_info['mask_limits']
         
-except:
-    print("Unable to read configuration files. Shutting down.")
-    sys.exit(1)
+# except:
+#     print("Unable to read configuration files. Shutting down.")
+#     sys.exit(1)
 
-# Motor class
-class PCUMotor():
-    
-    # Patterns for motor functions
-    base_pattern = "k1:ao:pcu"
-    channels = {
-        'get_chan': ":posvalRb",
-        'set_chan': ":posval",
-        'halt_chan': ":halt",
-        'jog_chan': ':jog',
-        'go_chan': ':go',
-        'enable_chan': ':enableRb',
-        'spmg': '.SPMG',
-    }
-    
-    def __init__(self, m_name, m_type="ln"):
-        
-        self.channel_list = []
-        
-        # Set up all channel PVs as attributes
-        for channel_key, channel_pat in PCUMotor.channels.items():
-            # Assemble full channel name
-            full_channel = f"{PCUMotor.base_pattern}:{m_type}:{m_name}{channel_pat}"
-            # Create EPICS PV
-            channel_PV = PV(full_channel)
-            self.channel_list.append(channel_PV)
-            # Set attribute
-            setattr(self, channel_key, channel_PV)
-            # Set attribute name
-            setattr(self, channel_key+"_name", full_channel)
-    
-    def check_connection(self):
-        for pv in self.channel_list:
-            if not pv.connect():
-                print(f"Channel {pv.pvname} has disconnected.")
-                raise PVDisconnectException
-    
-    def isEnabled(self):
-        """ Checks whether the motor is enabled """
-        return not self.enable_chan.get()
-    
-    def get_pos(self):
-        self.check_connection()
-        return self.get_chan.get()
+# Load configuration files
+base_configs, fiber_configs, mask_configs = util.load_configurations()
+motor_info = util.load_motors()
 
-    def set_pos(self, pos):
-        self.check_connection()
-        self.set_chan.put(pos)
-        self.go_chan.put(1)
+# Assign motor info to variables
+valid_motors = motor_info['valid_motors']
+tolerance = motor_info['tolerance']
+fiber_limits = motor_info['fiber_limits']
+mask_limits = motor_info['mask_limits']
 
-    def stop(self): 
-        # Important that this doesn't check connection,
-        # as a stop can result from a disconnect exception
-        self.spmg.put('Stop')
+# Assign config info to variables
+all_configs = dict(base_configs, **fiber_configs, **mask_configs)
+user_configs = dict(fiber_configs, **mask_configs)
 
 class PCUStates(Enum):
     INIT = 0
@@ -142,22 +111,29 @@ class PCUSequencer(Sequencer):
         super().__init__(prefix, tickrate=tickrate)
         
         # Create new channel for metastate
-        self._seqmetastate = self.ioc.registerString(f'{prefix}:meta')
+        self._seqmetastate = self.ioc.registerString(f'{prefix}:stst')
+        self._pos = self.ioc.registerString(f'{prefix}:pos')
+        self._posRb = self.ioc.registerString(f'{prefix}:posRb')
         
         # Register individual motor channels
         for m_name in PCUSequencer.motors:
-            chan_name = f"{m_name}Offset"
-            # Register IOC channel for setting mini-moves
-            setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
-                                                                 initial_value=RESET_VAL))
-            self.add_property(chan_name, dest_read=True)
-            # Register IOC channel for readback
-            setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
-            self.add_property(chan_name+"Rb")
+            for chan_type in ['Offset', 'Pos']: # relative vs. abs moves
+                chan_name = f"{m_name}{chan_type}"
+                # Register IOC channel for setting mini-moves
+                setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
+                                                                     initial_value=RESET_VAL))
+                self.add_property(chan_name, dest_read=True)
+                # Register IOC channel for readback
+                setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
+                self.add_property(chan_name+"Rb")
+        
+        # Check user-defined positions
+        for c_name, pos in fiber_configs.items():
+            config = PCUPos(pos)
         
         self.prepare(PCUStates)
-        self.destination = None
-        self.configuration = None
+        self.destination = ''
+        self.configuration = ''
         self.motor_moves = []
         # Checks whether move has completed
         self.current_move = None
@@ -168,7 +144,7 @@ class PCUSequencer(Sequencer):
     def get_config(self):
         """ Gets the initial configuration of the PCU """
         # Loop through configurations
-        for config, values in config_lookup.items():
+        for config, values in all_configs.items():
             all_match = True
             
             # Loop through motors
@@ -220,10 +196,10 @@ class PCUSequencer(Sequencer):
         else: return not self.motor_in_position('m4', 0)
     
     def pmask_center(self):
-        return config_lookup['pinhole_mask']['m1'], config_lookup['pinhole_mask']['m2']
+        return base_configs['pinhole_mask']['m1'], base_configs['pinhole_mask']['m2']
     
     def fiber_center(self):
-        return config_lookup['fiber_bundle']['m1'], config_lookup['fiber_bundle']['m2']
+        return base_configs['fiber_bundle']['m1'], base_configs['fiber_bundle']['m2']
     
     def element_in_hole(self, element, dest_pos=None):
         """ Checks whether pmask or fiber is in the K-mirror rotator hole """
@@ -287,8 +263,9 @@ class PCUSequencer(Sequencer):
             # Check for requested moves
             if offset_request is not None:
                 # Add to existing configuration
-                if self.configuration in config_lookup:
-                    offset_request += config_lookup[self.configuration][m_name]
+                if self.configuration in all_configs:
+                    offset_request += all_configs[self.configuration][m_name]
+                # TODO: else add it to the current position
                 mini_moves[m_name] = offset_request
         
         return mini_moves
@@ -312,8 +289,8 @@ class PCUSequencer(Sequencer):
             return False
         
         # Get centers of XY coordinates
-        xc = config_lookup[self.configuration]['m1']
-        yc = config_lookup[self.configuration]['m2']
+        xc = all_configs[self.configuration]['m1']
+        yc = all_configs[self.configuration]['m2']
         x_dest = dest_pos['m1']
         y_dest = dest_pos['m2']
         
@@ -361,7 +338,7 @@ class PCUSequencer(Sequencer):
     def load_config(self, destination):
         """ Loads destination's moves into queue, clears current configuration """
         # Get ordered moves from destination state
-        motor_posvals = config_lookup[destination]
+        motor_posvals = all_configs[destination]
         
         # Append info to move list
         self.motor_moves.clear()
@@ -384,7 +361,7 @@ class PCUSequencer(Sequencer):
             self.motor_moves.append({m_name:dest})
         
         # Clear configuration and set destination
-        self.configuration = None
+        self.configuration = ''
         self.destination = destination
 
         return
@@ -471,8 +448,8 @@ class PCUSequencer(Sequencer):
         self.current_move = None
         self.motor_moves.clear()
         # Set config to unknown
-        self.configuration = None
-        self.destination = None
+        self.configuration = ''
+        self.destination = ''
         
         # Stop motors
         for _, pv in PCUSequencer.motors.items():
@@ -498,7 +475,57 @@ class PCUSequencer(Sequencer):
     
     def process_request(self):
         """ Processes input from the request keyword """
-        pass
+        # Check the request keyword
+        request = self.seqrequest.lower()
+
+        if request == '':
+            return
+
+        if request == 'shutdown':
+            if self.state != PCUStates.MOVING:
+                self.message("Shutting down sequencer.")
+                super().stop()
+            else:
+                self.critical("Aborting sequencer.")
+                self.stop()
+        
+        # Stop the PCU and go to USER_DEF position
+        if request == 'stop':
+            if self.state==PCUStates.MOVING:
+                self.stop_motors()
+                self.to_IN_POS()
+            else:
+                self.critical("PCU is not moving.")
+        
+        if request == 'reinit':
+            if self.state != PCUStates.MOVING:
+                self.to_INIT()
+            else:
+                self.critical("Send stop signal before reinitializing.")
+    
+    def process_pos_request(self):
+        """ Processes a request for a configuration change """
+        request = self.config_request.lower()
+
+        if request == '':
+            return
+        
+        ### Request from a position
+        if self.state == PCUStates.IN_POS:
+            destination = request
+            if destination in all_configs:
+                self.message(f"Loading {destination} state.")
+                # Load next configuration (sets self.destination)
+                self.load_config(destination)
+                # Start move
+                self.to_MOVING()
+            else: self.critical(f'Invalid configuration: {destination}')
+            ### Request from MOVING
+        elif self.state == PCUStates.MOVING:
+            self.critical("Send stop signal before moving to new position.")
+            ### Request from FAULT
+        elif self.state == PCUStates.FAULT:
+            self.critical("Reinitialize the PCU sequencer before moving.")
     
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
@@ -509,24 +536,53 @@ class PCUSequencer(Sequencer):
         return False
     
     def checkmeta(self):
-        if self.state == PCUStates.IN_POS:
-            if self.configuration is None:
-                self.metastate = "USER_DEF"
-            else: self.metastate = self.configuration.upper()
-        else:
-            self.metastate = self.state.name
+        """ Checks metastate and position of PCU """
+        # Get metastate
+        self.metastate = self.state.name
+        # Make sure configuration is none unless in position
+        if self.state != PCUStates.IN_POS:
+            self.configuration = ''
+        if self.state==PCUStates.IN_POS and self.configuration=='':
+            self.configuration = 'user_def'
     
     def check_offsets(self):
         """ Checks offsets from the current configuration """
-        if self.configuration not in config_lookup: # No metastate
+        if self.configuration not in all_configs: # No metastate
             for m_name in PCUSequencer.motors:
                 setattr(self, m_name+"OffsetRb", 0)
         else: # Get offset positions
-            base_positions = config_lookup[self.configuration]
+            base_positions = all_configs[self.configuration]
             motor_positions = self.get_positions()
             for m_name in motor_positions:
                 offset = motor_positions[m_name] - base_positions[m_name]
                 setattr(self, m_name+"OffsetRb", offset)
+    
+    # -------------------------------------------------------------------------
+    # Control channel properties (static)
+    # -------------------------------------------------------------------------
+    @property
+    def metastate(self):
+        request = self._seqmetastate.get()
+        # Don't want a destructive read
+        return request
+    @metastate.setter
+    def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
+    
+    @property
+    def config_request(self):
+        request = self._pos.get()
+        if request not in [None, '']:
+            self._pos.set(''.encode('UTF-8'))
+        return request
+    
+    @property
+    def configuration(self):
+        cur_pos = self._posRb.get()
+        return cur_pos
+    @configuration.setter
+    def configuration(self, val):
+        if val==None: val = ''
+        self._posRb.set(val.encode('UTF-8'))
     
     # -------------------------------------------------------------------------
     # Init state
@@ -539,7 +595,9 @@ class PCUSequencer(Sequencer):
         
         # Will return configuration or None
         self.configuration = self.get_config()
-        
+        # Home / initialize stages
+        # Re-read the config files
+        # Make XYZ moves possible
         ###################################
         self.to_IN_POS()
     
@@ -570,24 +628,8 @@ class PCUSequencer(Sequencer):
                 else: # Warn user
                     self.critical(f"Invalid move for configuration {self.configuration}: {mini_moves}")
             
-            # Check the request keyword
-            request = self.seqrequest.lower()
-
-            if request != '':
-                # If move requested, process destination state
-                if request.startswith('to_'):
-                    destination = request[3:]
-                    if destination in config_lookup:
-                        self.message(f"Loading {destination} state.")
-                        # Load next configuration (sets self.destination)
-                        self.load_config(destination)
-                        # Start move
-                        self.to_MOVING()
-                    else: self.critical(f'Invalid configuration: {destination}')
-                    
-                    if request == 'shutdown':
-                        self.message("Shutting down sequencer.")
-                        super().stop()
+            self.process_request()
+            self.process_pos_request()
 
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException:
@@ -614,15 +656,8 @@ class PCUSequencer(Sequencer):
 
             # Check the request keyword and
             # start the reconfig process, if necessary
-            request = self.seqrequest.lower()
-            
-            # Stop the PCU and go to USER_DEF position
-            if request == 'stop':
-                self.stop_motors()
-                self.to_IN_POS()
-            
-            if request.startswith('to_'):
-                self.critical("Send stop signal before moving to new position.")
+            self.process_request()
+            self.process_pos_request()
             
             # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():
@@ -635,7 +670,7 @@ class PCUSequencer(Sequencer):
                 self.message("Finished moving.")
                 # Change configuration and destination keywords
                 self.configuration = self.destination
-                self.destination = None
+                self.destination = ''
                 # Move to in-position state
                 self.to_IN_POS()
             else: # Move is in progress
@@ -660,27 +695,17 @@ class PCUSequencer(Sequencer):
         """ Processes the FAULT state """
         self.checkabort()
         self.checkmeta()
+        
         # Respond to request channel
-        request = self.seqrequest.lower()
-        if request == 'reinit':
-            self.to_INIT()
+        self.process_request()
+        self.process_pos_request()
+        
     
     # -------------------------------------------------------------------------
     # TERMINATE state
     # -------------------------------------------------------------------------
     def process_TERMINATE(self):
         pass
-    
-    # -------------------------------------------------------------------------
-    # Control channel properties (static)
-    # -------------------------------------------------------------------------
-    @property
-    def metastate(self):
-        request = self._seqmetastate.get()
-        # Don't want a destructive read
-        return request
-    @metastate.setter
-    def metastate(self, val): self._seqmetastate.set(val.encode('UTF-8'))
 
 # -------------------------------------------------------------------------
 # Main function

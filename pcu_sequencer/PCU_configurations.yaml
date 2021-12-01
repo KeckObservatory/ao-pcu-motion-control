@@ -1,15 +1,15 @@
----
+--- # Basic configurations
 pinhole_mask:
     m1: 105 # X stage
     m2: 184 # Y stage
-    m3: 98 # Z stage (pinhole mask)
+    m3: 82.5 # Z stage (pinhole mask)
     m4: 0 # Z stage (fiber bundle)
     rot: 0 # Rotation stage
 fiber_bundle:
     m1: 150
     m2: 120
     m3: 0
-    m4: 90
+    m4: 82.5
     rot: 0
 kpf_mirror:
     m1: 105
@@ -29,3 +29,32 @@ telescope:
     m3: 0
     m4: 0
     rot: 0
+...
+--- # User-defined fiber configurations
+optosiris:
+    m1: 131.65
+    m2: 113.05
+    m3: 0
+    m4: 82.5
+    rot: 0
+ospec:
+    m1: 133.35
+    m2: 116.104
+    m3: 0
+    m4: 82.5
+    rot: 0
+osimg:
+    m1: 117.532
+    m2: 115.575
+    m3: 0
+    m4: 82.5
+    rot: 0
+...
+--- # User-defined pinhole mask configurations
+test_config:
+    m1: 105
+    m2: 184
+    m3: 90
+    m4: 0
+    rot: 0
+...

@@ -2,12 +2,24 @@
 ### Authors : Emily Ramey
 ### Date : 11/29/21
 
+# import argparse
+# parser = argparse.ArgumentParser()
+# parser.add_argument("--port", help="Port for the sequencer to run on")
+# args = parser.parse_args()
+
+import logging, coloredlogs
+import os
+
+port = 6200
+log.info(f'Setting server port to {port}')
+os.environ['EPICS_CA_SERVER_PORT'] = port
+
 ### Imports
 from transitions import Machine, State
 from kPySequencer.Sequencer import Sequencer, PVDisconnectException, PVConnectException
 from kPySequencer.Tasks import Tasks
 from kPySequencer.CountdownTimer import CountdownTimer
-import logging, coloredlogs
+
 import yaml
 import numpy as np
 import time
@@ -15,7 +27,6 @@ from epics import PV
 from enum import Enum
 import signal
 import sys
-import os
 
 ### Logging
 coloredlogs.DEFAULT_LOG_FORMAT = '%(asctime)s [%(levelname)s] %(message)s'
