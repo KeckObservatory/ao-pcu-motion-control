@@ -35,19 +35,19 @@ optosiris:
     m1: 131.65
     m2: 113.05
     m3: 0
-    m4: 82.5
+    m4: 0
     rot: 0
 ospec:
     m1: 133.35
     m2: 116.104
     m3: 0
-    m4: 82.5
+    m4: 0
     rot: 0
 osimg:
     m1: 117.532
     m2: 115.575
     m3: 0
-    m4: 82.5
+    m4: 0
     rot: 0
 ...
 --- # User-defined pinhole mask configurations
