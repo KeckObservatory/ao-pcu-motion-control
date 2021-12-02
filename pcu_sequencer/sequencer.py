@@ -124,7 +124,6 @@ class PCUSequencer(Sequencer):
         
         # Load configurations
         self.load_config_files()
-#         self.check_user_configs()
         
         # Load motor objects and channels
         self.load_motors(prefix)
@@ -140,6 +139,7 @@ class PCUSequencer(Sequencer):
         
         # Assign motor info to variables
         self.valid_motors = motor_info['valid_motors']
+        self.motor_limits = motor_info['limits']
         self.tolerance = motor_info['tolerance']
         self.fiber_limits = motor_info['fiber_limits']
         self.mask_limits = motor_info['mask_limits']
@@ -167,7 +167,7 @@ class PCUSequencer(Sequencer):
                 setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
                 self.add_property(chan_name+"Rb")
     
-    def check_user_configs(self):
+    def user_configs_valid(self):
         """ Checks that the user-defined configurations are valid """
         # Check user-defined positions
         for c_name, pos in self.user_configs.items():
@@ -176,7 +176,8 @@ class PCUSequencer(Sequencer):
                 # What to do if it's not valid?
                 self.critical(f"Configuration {c_name} is invalid. " +
                               "Please check the motor and instrument limits before reinitializing.")
-                self.to_FAULT()
+                return False
+        return True
     
     def get_config(self):
         """ Gets the initial configuration of the PCU """
@@ -364,6 +365,8 @@ class PCUSequencer(Sequencer):
     # Regular motor-moving functions
     # -------------------------------------------------------------------------
     
+    
+    
     def get_positions(self):
         """ Returns positions of all valid motors """
         all_positions = {}
@@ -430,7 +433,7 @@ class PCUSequencer(Sequencer):
     def check_motor_limits(self, dest_pos):
         """ Get motor destinations and check limits """
         
-        for m_name, m_lim in self.valid_motors.items():
+        for m_name, m_lim in self.motor_limits.items():
             if m_name not in dest_pos: continue
             m_dest = dest_pos[m_name]
             if m_dest < m_lim[0] or m_dest > m_lim[1]:
@@ -633,10 +636,14 @@ class PCUSequencer(Sequencer):
         try:
             # Load and check config files
             self.load_config_files()
-            self.check_user_configs()
-        
+            if not self.user_configs_valid():
+                self.to_FAULT()
+                return
             # Will return configuration or None
             self.configuration = self.get_config()
+            
+            self.to_INPOS()
+        
         # Enter the fault state if a channel is disconnected while running
         except PVDisconnectException as err:
             self.critical(str(err))
@@ -647,7 +654,6 @@ class PCUSequencer(Sequencer):
         # Re-read the config files
         # Make XYZ moves possible
         ###################################
-        self.to_INPOS()
     
     # -------------------------------------------------------------------------
     # INPOS state

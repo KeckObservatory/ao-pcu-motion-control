@@ -59,7 +59,7 @@ osimg:
 test_config:
     m1: 0
     m2: 0
-    m3: 90
+    m3: 0
     m4: 0
     rot: 0
 ...

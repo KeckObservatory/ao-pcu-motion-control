@@ -12,7 +12,7 @@ class PCUPos():
         Initializes a position with a dictionary or with m# arguments.
         Valid motors that are not specified will be set to zero.
         """
-        self.pos_dict = {}
+        self._mdict = {}
         # Check inputs
         if pos_dict is None:
             pos_dict = kwargs
@@ -21,23 +21,48 @@ class PCUPos():
         for m_name in PCUPos.valid_motors:
             # Set motor position, zero if not specified
             pos = pos_dict[m_name] if m_name in pos_dict else 0
-            self.pos_dict[m_name] = pos
-            setattr(self, m_name, pos)
+            self._mdict[m_name] = pos
+            self.add_property(m_name)
         
-        self.name = name
+        self.name = '(unnamed)' if name is None else name
+    
+    def add_property(self, m_name):
+        """ Adds a property for individual motors """
+        # Define setter function
+        def setter(self, val):
+            self._mdict[m_name] = val
+        # Define getter function
+        getter = lambda self: self._mdict[m_name]
+        setattr(PCUPos, m_name, property(getter, setter))
     
     def __str__(self):
-        return str(self.pos_dict)
+        string = f"Position {self.name}: ["
+        string += ', '.join([f'{m}: {val}' for m,val in self._mdict.items()])
+        string += ']'
+        return string
     
-    def m_dict(self):
+    def __repr__(self):
+        return str(self)
+    
+    def __add__(self, other):
+        new_dict = {}
+        for m_name, val in self.mdict.items():
+            # Check for motor mismatch
+            if m_name not in other.mdict: raise ValueError("Cannot add positions.")
+            # Add to new dictionary
+            new_dict[m_name] = val + other.mdict[m_name]
+        return PCUPos(new_dict)
+    
+    @property
+    def mdict(self):
         """ Returns a dictionary of positions """
-        return self.pos_dict
+        return self._mdict
     
     def is_between(self, m_name, limits):
         """ Checks whether a motor position is within the limit array """
         if m_name not in PCUPos.valid_motors:
             raise ValueError(f"{m_name} is not a valid motor.")
-        num = self.pos_dict[m_name]
+        num = self._mdict[m_name]
         return num >= limits[0] and num <= limits[1]
     
     def in_limits(self, limits):
