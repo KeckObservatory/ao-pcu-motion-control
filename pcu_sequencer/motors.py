@@ -15,8 +15,8 @@ class PCUMotor():
         'enable': ':enable',
         'enableRb': ':enableRb',
         'home': ':home',
-#         'torque': ':enableTorque',
-#         'torqueRb': ':enableTorqueRb',
+        'torque': ':enableTorque',
+        'torqueRb': ':enableTorqueRb',
         'moving': '.MOVN',
         'spmg': '.SPMG',
     }
@@ -46,7 +46,7 @@ class PCUMotor():
         """ Checks whether the motor is enabled """
         # Software enable channel is backwards
         # Torque enable works fine
-        return (not self.enableRb.get()) # and self.torqueRb.get()
+        return (not self.enableRb.get()) and self.torqueRb.get()
     
     def enable(self):
         """ Enables the motor """
