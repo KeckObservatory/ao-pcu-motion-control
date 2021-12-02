@@ -365,7 +365,14 @@ class PCUSequencer(Sequencer):
     # Regular motor-moving functions
     # -------------------------------------------------------------------------
     
+    def enable_all(self):
+        """ Enables all motors in the PCU """
+        for m_name, motor in self.motors.items():
+            motor.enable()
     
+    def disable_all(self):
+        for m_name, motor in self.motors.items():
+            motor.disable()
     
     def get_positions(self):
         """ Returns positions of all valid motors """
@@ -528,6 +535,21 @@ class PCUSequencer(Sequencer):
             else:
                 self.critical("Aborting sequencer.")
                 self.stop()
+        
+        if request == 'enable':
+            if self.state == PCUStates.INPOS:
+                self.enable_all()
+            else:
+                self.critical("PCU must be in INPOS state to enable motors.")
+        
+        if request == 'disable':
+            if self.state == PCUStates.INPOS:
+                self.disable_all()
+            elif self.state == PCUStates.MOVING:
+                self.stop_motors()
+                self.disable_all()
+            else:
+                self.critical(f"Invalid input for state {self.state.name}")
         
         # Stop the PCU and go to USER_DEF position
         if request == 'stop':

@@ -52,12 +52,12 @@ class PCUMotor():
         """ Enables the motor """
         self.check_connection()
         self.enable.set(0) # Enable software
-#         self.torque.set(1) # Enable torque
+        self.torque.set(1) # Enable torque
     
     def disable(self):
         """ Disables the motor """
         self.check_connection()
-#         self.torque.set(0) # Disable torque
+        self.torque.set(0) # Disable torque
         self.enable.set(1) # Disable software
     
     def isMoving(self):
