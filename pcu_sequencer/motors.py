@@ -12,10 +12,10 @@ class PCUMotor():
         'halt_chan': ":halt",
         'jog_chan': ':jog',
         'go_chan': ':go',
-        'enable': ':enable',
+        'enable_chan': ':enable',
         'enableRb': ':enableRb',
-        'home': ':home',
-        'torque': ':enableTorque',
+        'home_chan': ':home',
+        'torque_chan': ':enableTorque',
         'torqueRb': ':enableTorqueRb',
         'moving': '.MOVN',
         'spmg': '.SPMG',
@@ -51,14 +51,14 @@ class PCUMotor():
     def enable(self):
         """ Enables the motor """
         self.check_connection()
-        self.enable.put(0) # Enable software
-        self.torque.put(1) # Enable torque
+        self.enable_chan.put(0) # Enable software
+        self.torque_chan.put(1) # Enable torque
     
     def disable(self):
         """ Disables the motor """
         self.check_connection()
-        self.torque.put(0) # Disable torque
-        self.enable.put(1) # Disable software
+        self.torque_chan.put(0) # Disable torque
+        self.enable_chan.put(1) # Disable software
     
     def isMoving(self):
         return self.moving
