@@ -1,10 +1,15 @@
 ---
-valid_motors: # Motors and limits
+valid_motors: # Motors
+    - m1 
+    - m2
+#     - m3
+    - m4
+#     rot
+limits:
     m1: [0, 300]
     m2: [0, 190]
-#     m3: [0, 100]
+    m3: [0, 100]
     m4: [0, 100]
-#     rot
 tolerance: # Maximum position error
     m1: .01
     m2: .008
@@ -15,5 +20,5 @@ fiber_limits: # XY limits with fiber extended
     m1: [115, 185]
     m2: [85, 155]
 mask_limits: # XY limits with mask extended
-    m1: [115, 185]
-    m2: [149, 200]
+    m1: [95, 115]
+    m2: [175, 190]
