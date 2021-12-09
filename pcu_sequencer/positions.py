@@ -209,7 +209,7 @@ class PCUPos():
         # Compare to destination within tolerance, return False if not reached
         t = self.tolerance[m_name]
         # Lower and upper limits
-        in_pos = self.is_between(m_name, pos-t, pos+t)
+        in_pos = self.is_between(m_name, [pos-t, pos+t])
         # Return whether the given motor is in position
         return in_pos
 
