@@ -126,11 +126,11 @@ class collisionSequencer(Sequencer):
             motor.stop()
     
     def reset_motors(self):
-        for _, pv in self.motors.items():
+        for _, motor in self.motors.items():
             motor.reset_pos()
     
     def disable_motors(self):
-        for _, pv in self.motors.items():
+        for _, motor in self.motors.items():
             motor.disable()
     
     def stop_and_disable(self):
