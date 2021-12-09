@@ -137,7 +137,7 @@ class collisionSequencer(Sequencer):
         """ Disable motors, giving the system time to reset values """
         self.stop_motors()
         time.sleep(0.5)
-#         self.reset_motors()
+        self.reset_motors()
         time.sleep(0.5)
         self.disable_motors()
     
