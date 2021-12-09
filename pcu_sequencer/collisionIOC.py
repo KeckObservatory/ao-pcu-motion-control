@@ -49,7 +49,7 @@ class collisionSequencer(Sequencer):
     # -------------------------------------------------------------------------
     # Initialize the sequencer
     # -------------------------------------------------------------------------
-    def __init__(self, prefix="collisions", tickrate=0.5):
+    def __init__(self, prefix="k1:ao:pcu:collisions", tickrate=0.5):
         super().__init__(prefix, tickrate=tickrate)
         
         self.allowed_motors = {}
@@ -403,10 +403,10 @@ if __name__ == "__main__":
         SequencerTask1 = 0
 
     # The main sequencer
-    setup = collisionSequencer(prefix='k1:ao:pcu')
+    setup = collisionSequencer(prefix='k1:ao:pcu:collisions')
 
     # Create a task pool and register the sequencers that need to run
-    tasks = Tasks(TASKS, 'collisions', workers=len(TASKS))
+    tasks = Tasks(TASKS, 'k1:ao:pcu:collisions', workers=len(TASKS))
     tasks.register(setup, TASKS.SequencerTask1)
 
     # Start everything
