@@ -174,7 +174,7 @@ class collisionSequencer(Sequencer):
             pos_diff = instr_center - cur_pos
             for m_name in ['m1', 'm2']: # Append operators to valid motors
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
-                if pos_dif[m_name] < 0: self.allowed_motors[m_name] = operator.le
+                if pos_diff[m_name] < 0: self.allowed_motors[m_name] = operator.le
     
 #     def reset_command(self):
 #         """ Resets the commanded positions of the motors """
