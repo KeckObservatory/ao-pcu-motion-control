@@ -79,6 +79,10 @@ class PCUMotor():
         self.check_connection()
         self.set_chan.put(pos)
         self.go_chan.put(1)
+    
+    def reset_pos(self):
+        pos = self.get_pos()
+        self.set_pos(pos)
 
     def stop(self): 
         # Important that this doesn't check connection,

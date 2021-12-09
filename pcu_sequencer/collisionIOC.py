@@ -123,10 +123,7 @@ class collisionSequencer(Sequencer):
         # Stop motors
         for _, pv in self.motors.items():
             pv.stop()
-        
-        self.reset_command()
-        
-        for _, pv in self.motors.items():
+            pv.reset_pos()
             pv.disable()
     
     def motors_enabled(self):
@@ -180,12 +177,12 @@ class collisionSequencer(Sequencer):
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
                 if pos_dif[m_name] < 0: self.allowed_motors[m_name] = operator.le
     
-    def reset_command(self):
-        """ Resets the commanded positions of the motors """
-        cur_pos = self.current_pos()
-        for m_name in self.valid_motors:
-            motor = self.motors[m_name]
-            motor.set_pos(cur_pos[m_name])
+#     def reset_command(self):
+#         """ Resets the commanded positions of the motors """
+#         cur_pos = self.current_pos()
+#         for m_name in self.valid_motors:
+#             motor = self.motors[m_name]
+#             motor.set_pos(cur_pos[m_name])
     
     def check_all_pos(self):
         """ Checks all positions for validity """
