@@ -28,6 +28,11 @@ coloredlogs.DEFAULT_DATE_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 coloredlogs.install(level='DEBUG')
 log = logging.getLogger('')
 
+### Set port number
+port = '5066'
+log.info(f'Setting server port to {port}')
+os.environ['EPICS_CA_SERVER_PORT'] = port
+
 KMIRR_RADIUS = 50 # mm - true radius of the k-mirror rotator
 
 class collisionStates(Enum):
