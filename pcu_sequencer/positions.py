@@ -206,9 +206,6 @@ class PCUPos():
     
     def motor_in_position(self, m_name, pos):
         """ Checks whether a motor (m_name) is in position (m_dest) """
-        # Get PV getter for motor
-        motor = self.motors[m_name]
-        
         # Compare to destination within tolerance, return False if not reached
         t = self.tolerance[m_name]
         # Lower and upper limits
