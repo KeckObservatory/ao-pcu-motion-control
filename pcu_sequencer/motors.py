@@ -63,9 +63,17 @@ class PCUMotor():
     def isMoving(self):
         return self.moving
     
+    def home(self):
+        self.check_connection()
+        self.home_chan.put(1)
+    
     def get_pos(self):
         self.check_connection()
         return self.get_chan.get()
+    
+    def get_commanded(self):
+        self.check_connection()
+        return self.set_chan.get()
 
     def set_pos(self, pos):
         self.check_connection()

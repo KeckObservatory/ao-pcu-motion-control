@@ -35,5 +35,7 @@ motor_info = load_motors()
 # Assign motor info to variables
 valid_motors = motor_info['valid_motors']
 tolerance = motor_info['tolerance']
-fiber_limits = motor_info['fiber_limits']
-mask_limits = motor_info['mask_limits']
+motor_limits = motor_info['motor_limits']
+fiber_center = motor_info['fiber_center']
+mask_center = motor_info['mask_center']
+safe_radius = motor_info['safe_radius']

@@ -22,7 +22,7 @@ import sys
 import os
 
 import PCU_util as util
-from positions import PCUPos
+from positions import PCUPos, PCUMove
 from motors import PCUMotor
 
 # Static/global variables
@@ -50,46 +50,10 @@ os.environ['EPICS_CA_SERVER_PORT'] = port
 # Config file and motor numbers
 # FIX DEPLOY
 config_file = "./PCU_configurations.yaml"
+# config_file = "/kroot/rel/ao/qfix/data/k1aoPcu.yaml"
 motor_file = "./motor_configurations.yaml"
 
-# Load configuration files
-# try:
-#     # Open and read config file with info on named positions
-#     with open(config_file) as f:
-#         file = f.read()
-#         configurations = list(yaml.load_all(file))
-#         # Load both config files
-#         base_configs = configurations[0]
-#         fiber_configs = configurations[1]
-#         mask_configs = configurations[2]
-#         # FIX-YAML version on k1aoserver-new is too old.
-
-#     # Open and read motor file with info on valid motors
-#     with open(motor_file) as f: # FIX Z-STAGE
-#         file = f.read()
-#         motor_info = yaml.load(file)
-#         valid_motors = motor_info['valid_motors']
-#         tolerance = motor_info['tolerance']
-#         fiber_limits = motor_info['fiber_limits']
-#         mask_limits = motor_info['mask_limits']
-        
-# except:
-#     print("Unable to read configuration files. Shutting down.")
-#     sys.exit(1)
-
-# Load configuration files
-# base_configs, fiber_configs, mask_configs = util.load_configurations()
-# motor_info = util.load_motors()
-
-# # Assign motor info to variables
-# valid_motors = motor_info['valid_motors']
-# tolerance = motor_info['tolerance']
-# fiber_limits = motor_info['fiber_limits']
-# mask_limits = motor_info['mask_limits']
-
-# # Assign config info to variables
-# all_configs = dict(base_configs, **fiber_configs, **mask_configs)
-# user_configs = dict(fiber_configs, **mask_configs)
+# NOTE: Switching the moves dict to contain moves and not positions
 
 class PCUStates(Enum):
     INIT = 0
@@ -102,7 +66,7 @@ class PCUStates(Enum):
 class PCUSequencer(Sequencer):
 
     # FIX Z-STAGE
-    home_Z = {'m3':0, 'm4':0}
+    home_Z = PCUMove(move_type='absolute', m3=0, m4=0)
     
     # -------------------------------------------------------------------------
     # Initialize the sequencer
@@ -133,16 +97,22 @@ class PCUSequencer(Sequencer):
     
     def load_config_files(self):
         """ Loads configuration files into class variables """
+        # Update position class
+        PCUPos.load_motors()
+        
         # Load configuration files
-        self.base_configs, self.fiber_configs, self.mask_configs = util.load_configurations()
+        all_configs = util.load_configurations()
+        self.base_configs = PCUPos.from_dict(all_configs[0])
+        self.fiber_configs = PCUPos.from_dict(all_configs[1])
+        self.mask_configs = PCUPos.from_dict(all_configs[2])
+        
+        # Load motor configuration info
         motor_info = util.load_motors()
         
         # Assign motor info to variables
         self.valid_motors = motor_info['valid_motors']
-        self.motor_limits = motor_info['limits']
+        self.motor_limits = motor_info['motor_limits']
         self.tolerance = motor_info['tolerance']
-        self.fiber_limits = motor_info['fiber_limits']
-        self.mask_limits = motor_info['mask_limits']
 
         # Assign config info to variables
         self.all_configs = dict(self.base_configs, **self.fiber_configs, **self.mask_configs)
@@ -160,19 +130,19 @@ class PCUSequencer(Sequencer):
             for chan_type in ['Offset', 'Pos']: # relative vs. abs moves
                 chan_name = f"{m_name}{chan_type}"
                 # Register IOC channel for setting mini-moves
-                setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
+                setattr(self, f"_{m_name}Offset"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
                                                                      initial_value=RESET_VAL))
                 self.add_property(chan_name, dest_read=True)
-                # Register IOC channel for readback
-                setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
-                self.add_property(chan_name+"Rb")
+                # Register IOC channel for readback positions
+                if chan_type=='Pos': # No offsets from positions anymore
+                    setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
+                    self.add_property(chan_name+"Rb")
     
     def user_configs_valid(self):
         """ Checks that the user-defined configurations are valid """
         # Check user-defined positions
         for c_name, pos in self.user_configs.items():
-            config = PCUPos(pos)
-            if not config.is_valid():
+            if not pos.is_valid():
                 # What to do if it's not valid?
                 self.critical(f"Configuration {c_name} is invalid. " +
                               "Please check the motor and instrument limits before reinitializing.")
@@ -182,12 +152,15 @@ class PCUSequencer(Sequencer):
     def get_config(self):
         """ Gets the initial configuration of the PCU """
         # Loop through configurations
+        cur_pos = self.current_pos()
+        
         for config, values in self.all_configs.items():
             all_match = True
             
             # Loop through motors
             for m_name in self.valid_motors:
-                if not self.motor_in_position(m_name, values[m_name]):
+                # Check position against config
+                if not cur_pos.motor_in_position(m_name, values[m_name]):
                     all_match = False
                     break
             
@@ -195,68 +168,7 @@ class PCUSequencer(Sequencer):
             if all_match:
                 return config
             
-            # Pinhole mask config with offset
-            if (self.pmask_extended() and 
-                (not self.fiber_extended()) and 
-                self.element_in_hole('pmask')):
-                return 'pinhole_mask'
-            
-            # Fiber bundle config with offset
-            if (self.fiber_extended() and
-                (not self.pmask_extended()) and
-                self.element_in_hole('fiber')):
-                return 'fiber_bundle'
-            
             return None
-    
-    # -------------------------------------------------------------------------
-    # Motor-specific functions
-    # -------------------------------------------------------------------------
-    def pmask_extended(self, dest_pos=None):
-        """ Checks if the pinhole mask is extended """
-        if 'm3' not in self.valid_motors:
-            self.critical("Motor 3 is not connected. Ensure that the motor is either "+ 
-                          "fully retracted or uninstalled before proceeding.")
-            return False
-        
-        # Check current or future position
-        if dest_pos is not None: return dest_pos['m3'] > 0
-        else: return not self.motor_in_position('m3', 0)
-    
-    def fiber_extended(self, dest_pos=None):
-        if 'm4' not in self.valid_motors:
-            self.critical("Motor 4 is not connected. Ensure that the motor is either "+ 
-                          "fully retracted or uninstalled before proceeding.")
-            return False
-        
-        # Check current or future position
-        if dest_pos is not None: return dest_pos['m4'] > 0
-        else: return not self.motor_in_position('m4', 0)
-    
-    def pmask_center(self):
-        return self.base_configs['pinhole_mask']['m1'], self.base_configs['pinhole_mask']['m2']
-    
-    def fiber_center(self):
-        return self.base_configs['fiber_bundle']['m1'], self.base_configs['fiber_bundle']['m2']
-    
-    def element_in_hole(self, element, dest_pos=None):
-        """ Checks whether pmask or fiber is in the K-mirror rotator hole """
-        # Get center and radius of configuration
-        if element=='pmask':
-            xc, yc = self.pmask_center()
-            radius = CLEARANCE_PMASK
-        elif element=='fiber':
-            xc, yc = self.fiber_center()
-            radius = CLEARANCE_FIBER
-        
-        # Check current or future position
-        if dest_pos is None: # Current positions
-            x_pos, y_pos = self.motors['m1'].get_pos(), self.motors['m2'].get_pos()
-        else: # Future positions
-            x_pos, y_pos = dest_pos['m1'], dest_pos['m2']
-        
-        return (xc - x_pos)**2 + (yc - y_pos)**2 < radius
-        
     
     # -------------------------------------------------------------------------
     # Mini-move functions
@@ -264,8 +176,9 @@ class PCUSequencer(Sequencer):
     
     def add_property(self, p_name, dest_read=False):
         """ 
-        Add a mini-move property to the PCUSequencer class
-        named <p_name>, with or without a destructive read
+        Add a channel as a property to the PCUSequencer class
+        named <p_name>, with or without a destructive read.
+        Class must already contain a channel called '_<p_name>'.
         """
         chan_name = "_"+p_name
         
@@ -290,76 +203,85 @@ class PCUSequencer(Sequencer):
                 )
                )
     
-    def get_mini_moves(self):
-        """ Returns a dictionary of mini-moves to be taken """
-        mini_moves = {}
+    def get_channels(self, chan_type):
+        """ Gets channels of a certain type (must be named {m_name}{chan_type}) """
+        # Check input
+        if chan_type not in ['Offset', 'Pos']:
+            raise ValueError(f"Invalid channel designation: {chan_type}")
         
-        # Check all motor input channels
-        for m_name in self.motors:
-            offset_channel = m_name+"Offset"
-            offset_request = getattr(self, offset_channel)
-            # Check for requested moves
-            if offset_request is not None:
-                # Add to existing configuration
-                if self.configuration in self.all_configs:
-                    offset_request += self.all_configs[self.configuration][m_name]
-                # TODO: else add it to the current position
-                mini_moves[m_name] = offset_request
+        m_type = 'absolute' if chan_type=='Pos' else 'relative'
+        move = PCUMove(move_type=m_type)
+        # Loop through motors
+        for m_name in self.valid_motors:
+            offset_channel = m_name+chan_type
+            # Load channel into move
+            move[m_name] = getattr(self, offset_channel)
+        return move
         
-        return mini_moves
+    def get_moves(self):
+        """ Checks all channels and returns a PCUMove """
+        # Do absolute moves first, then relative
+        abs_move = self.get_channels(chan_type='Pos')
+        if abs_move: return abs_move
+        
+        rel_move = self.get_channels(chan_type='Offset')
+        return rel_move # Will evaluate to False if no moves
     
-    def check_mini_moves(self, mini_moves):
-        """ Checks that a move is valid within a configuration """
-        # Check that it is the right configuration
-        if self.configuration not in ['pinhole_mask', 'fiber_bundle']:
-            return False
-        if not ('m1' in self.valid_motors and 'm2' in self.valid_motors):
-            self.critical("X and Y motors must be enabled for offsets to take place.")
-            return False
+#     def check_move(self, move):
+#         """ Checks that a move (PCUMove object) is valid """
+#         # X and Y motors need to be enabled
+#         if not ('m1' in self.valid_motors and 'm2' in self.valid_motors):
+# #             self.critical("X and Y motors must be enabled for offsets to take place.")
+#             return False
         
-        # Get current motor positions
-        dest_pos = self.get_positions()
-        # Update to new positions
-        for m_name, m_dest in mini_moves.items():
-            dest_pos[m_name] = m_dest
+#         if move:
+#             # Add move to current position
+#             base_pos = self.current_pos()
+#             # Add positions
+#             dest_pos = base_pos + move
         
-        if not self.check_motor_limits(dest_pos):
-            return False
+#         if not dest_pos.is_valid():
+#             self.critical(f"Invalid destination position: {dest_pos}")
+#             return False
         
-        # Get centers of XY coordinates
-        xc = self.all_configs[self.configuration]['m1']
-        yc = self.all_configs[self.configuration]['m2']
-        x_dest = dest_pos['m1']
-        y_dest = dest_pos['m2']
-        
-        # Check for pinhole mask moves
-        if self.configuration == "pinhole_mask":
-            r_circ = CLEARANCE_PMASK # mm ### what do we want the clearance to be?
-            # I'm going to need the exact center of the circle we want for this
-            # The values we're using now are just estimates
+#         # Check for pinhole mask moves
+#         if self.configuration in self.mask_configs or self.configuration=='pinhole_mask':
+#             # No m4 moves allowed
+#             if 'm4' in self.valid_motors and dest_pos.m4 > 0:
+#                 return False
+#             # Check for circle
+#             return dest_pos.in_hole('mask')
+# #             r_circ = CLEARANCE_PMASK # mm ### what do we want the clearance to be?
+# #             # I'm going to need the exact center of the circle we want for this
+# #             # The values we're using now are just estimates
             
-            # OK to move pinhole mask, not fiber bundle
-            # Maybe this should raise an error? Can you attach a string to a 
-            #     low-level error and print out a warning higher up?
-            if m_name == 'm3': return True
-            if m_name == 'm4': return False
+# #             # OK to move pinhole mask, not fiber bundle
+# #             # Maybe this should raise an error? Can you attach a string to a 
+# #             #     low-level error and print out a warning higher up?
+# #             if m_name == 'm3': return True
+# #             if m_name == 'm4': return False
             
-            # Check if XY motors are outside circle bounds
-            return (x_dest-xc)**2 + (y_dest-yc)**2 < r_circ**2
+# #             # Check if XY motors are outside circle bounds
+# #             return (x_dest-xc)**2 + (y_dest-yc)**2 < r_circ**2
         
-        elif self.configuration == "fiber_bundle": # Check for fiber bundle moves
-            r_circ = CLEARANCE_FIBER # mm
-            # OK to move fiber bundle, not pinhole mask
-            if m_name == 'm3': return False
-            if m_name == 'm4': return True
+#         # Check for fiber bundle moves
+#         elif self.configuration in self.fiber_configs or self.configuration=='fiber_bundle':
+#             # No m3 moves allowed
+#             if 'm3' in self.valid_motors and dest_pos.m3 > 0:
+#                 return False
+#             return dest_pos.in_hole('fiber')
+# #             r_circ = CLEARANCE_FIBER # mm
+# #             # OK to move fiber bundle, not pinhole mask
+# #             if m_name == 'm3': return False
+# #             if m_name == 'm4': return True
             
-            # Check if XY motors are outside circle bounds
-            self.message(f"{xc}, {x_dest}, {yc}, {y_dest}, {r_circ}")
-            return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ**2
+# #             # Check if XY motors are outside circle bounds
+# #             self.message(f"{xc}, {x_dest}, {yc}, {y_dest}, {r_circ}")
+# #             return (xc-x_dest)**2 + (yc-y_dest)**2 < r_circ**2
             
-        else: # This shouldn't happen
-            self.critical("Reached impossible state in checking mini-moves.")
-            self.to_FAULT()
+#         else: # This shouldn't happen
+#             self.critical("Reached impossible state in checking mini-moves.")
+#             self.to_FAULT()
     
     # -------------------------------------------------------------------------
     # Regular motor-moving functions
@@ -374,13 +296,13 @@ class PCUSequencer(Sequencer):
         for m_name, motor in self.motors.items():
             motor.disable()
     
-    def get_positions(self):
+    def current_pos(self):
         """ Returns positions of all valid motors """
         all_positions = {}
         for m_name, motor in self.motors.items():
             all_positions[m_name] = motor.get_pos()
         
-        return all_positions
+        return PCUPos(all_positions)
     
     def load_config(self, destination):
         """ Loads destination's moves into queue, clears current configuration """
@@ -390,22 +312,24 @@ class PCUSequencer(Sequencer):
         # Append info to move list
         self.motor_moves.clear()
         
-        # Pull back Z stages if it's a major move
-        if self.configuration != destination:
+        cur_pos = self.current_pos()
+        
+        # Pull back Z stages if it's outside k-mirror hole
+        if not cur_pos.move_in_hole(motor_posvals):
             self.motor_moves.append(PCUSequencer.home_Z)
-        # Note: this should make it so moves within a configuration 
-        #       don't pull the Z stages back all the way
-
-        for m_name in motor_posvals.keys():
+        # Note: this should make it so moves within the hole 
+        #       don't pull the Z stage back first
+        
+        # Move motors one by one, according to order in dictionary
+        for m_name, m_dest in motor_posvals.mdict.items():
             # Skip bad entries in the yaml file.
-            if m_name not in self.valid_motors:
-                continue
-
-            # Get destination of each motor
-            dest = motor_posvals[m_name]
+#             if m_name not in self.valid_motors:
+#                 continue
+            # Load single move
+            move = PCUMove(move_type='absolute', pos_dict={m_name: m_dest})
 
             # Append to motor moves
-            self.motor_moves.append({m_name:dest})
+            self.motor_moves.append(move)
         
         # Clear configuration and set destination
         self.configuration = ''
@@ -413,9 +337,14 @@ class PCUSequencer(Sequencer):
 
         return
     
-    def trigger_move(self, m_dict):
+    def trigger_move(self, move):
         """ Triggers move and sets a timer to check if complete """
-        for m_name, m_dest in m_dict.items():
+        # Check destination again
+        dest_pos = self.current_pos() + move
+        if not dest_pos.is_valid():
+            self.critical(f"Invalid move: {dest_pos}")
+        
+        for m_name, m_dest in move.mdict.items(): # TODO
             if m_name in self.valid_motors:
                 # Get PV object for motor
                 motor = self.motors[m_name]
@@ -430,58 +359,59 @@ class PCUSequencer(Sequencer):
                 motor.set_pos(m_dest)
         
         # Save current move to class variables
-        self.current_move = m_dict
+        self.current_move = move
         
         # Start a timer for the move
         self.move_timer.start(seconds=MOVE_TIME)
 
         return
     
-    def check_motor_limits(self, dest_pos):
-        """ Get motor destinations and check limits """
+#     def check_motor_limits(self, dest_pos):
+#         """ Get motor destinations and check limits """
         
-        for m_name, m_lim in self.motor_limits.items():
-            if m_name not in dest_pos: continue
-            m_dest = dest_pos[m_name]
-            if m_dest < m_lim[0] or m_dest > m_lim[1]:
-                self.message(f"Limit detected for {m_name}")
-                return False
+#         for m_name, m_lim in self.motor_limits.items():
+#             if m_name not in dest_pos: continue
+#             m_dest = dest_pos[m_name]
+#             if m_dest < m_lim[0] or m_dest > m_lim[1]:
+#                 self.message(f"Limit detected for {m_name}")
+#                 return False
         
-        return True
+#         return True
     
-    def motor_in_position(self, m_name, m_dest):
-        """ Checks whether a motor (m_name) is in position (m_dest) """
-        # Check for valid motor
-        if m_name not in self.valid_motors:
-            return False
+#     def motor_in_position(self, m_name, m_dest):
+#         """ Checks whether a motor (m_name) is in position (m_dest) """
+#         # Check for valid motor
+#         if m_name not in self.valid_motors:
+#             return False
         
-        # Get PV getter for motor
-        motor = self.motors[m_name]
-        # Get current position
-        cur_pos = motor.get_pos()
+#         # Get PV getter for motor
+#         motor = self.motors[m_name]
+#         # Get current position
+#         cur_pos = motor.get_pos()
         
-        # Compare to destination within tolerance, return False if not reached
-        t = self.tolerance[m_name]
-        # Lower and upper limits
-        in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
-        # Return whether the given motor is in position
-        return in_pos
+#         # Compare to destination within tolerance, return False if not reached
+#         t = self.tolerance[m_name]
+#         # Lower and upper limits
+#         in_pos = cur_pos > m_dest-t and cur_pos < m_dest+t
+#         # Return whether the given motor is in position
+#         return in_pos
     
     def move_complete(self):
         """ Returns True when the move in self.current_move is complete """
         # Get current motor motions
-        m_dict = self.current_move
+        cur_move = self.current_move # PCUMove
         # Return True if no moves are taking place
-        if m_dict is None: return True
+        if cur_move is None: return True
         
+        cur_pos = self.current_pos()
         # Get current positions and compare to destinations
-        for m_name, m_dest in m_dict.items():
+        for m_name, m_dest in dest_pos.mdict.items():
             if m_name in self.valid_motors:
-                if not self.motor_in_position(m_name, m_dest):
+                if not cur_pos.motor_in_position(m_name, m_dest):
                     return False
                 
         # Return True if motors are in position and release current_move
-        self.message(f"Move {self.current_move} complete!")
+        self.message(f"Move complete!")
         self.current_move = None
         return True
     
@@ -551,6 +481,12 @@ class PCUSequencer(Sequencer):
             else:
                 self.critical(f"Invalid input for state {self.state.name}")
         
+        # Clear the configuration if in static state
+        if request == 'clear_pos':
+            if self.state == PCUStates.INPOS:
+                self.configuration = None
+            else: self.critical("No named position is set.")
+        
         # Stop the PCU and go to USER_DEF position
         if request == 'stop':
             if self.state==PCUStates.MOVING:
@@ -589,6 +525,36 @@ class PCUSequencer(Sequencer):
         elif self.state == PCUStates.FAULT:
             self.critical("Reinitialize the PCU sequencer before moving.")
     
+    def process_move_request(self):
+        """ Processes a move request """
+        # Check state
+        if self.state == PCUStates.MOVING:
+            self.critical("Send stop signal before moving to new position.")
+            return
+        elif self.state != PCUStates.INPOS:
+            self.critical("Moves only valid when in position")
+            return
+        
+        cur_pos = self.current_pos()
+        
+        # Check for mini-moves (dithers)
+        move = self.get_moves()
+        # Found mini-moves
+        if move:
+            # Get destination
+            dest_pos = cur_pos+move
+            if dest_pos.is_valid():
+                # Check if you need to home Z stages
+                if not cur_pos.move_in_hole(dest_pos):
+                    motor_moves.append(PCUSequencer.home_Z)
+                # Trigger a PCU move
+                self.motor_moves.append(move.xy)
+                self.motor_moves.append(move.z)
+                # Go to moving
+                self.to_MOVING()
+            else:
+                self.critical(f"Invalid destination position: {dest_pos}")
+    
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
         if self.seqabort:
@@ -607,17 +573,13 @@ class PCUSequencer(Sequencer):
         if self.state==PCUStates.INPOS and self.configuration=='':
             self.configuration = 'user_def'
     
-    def check_offsets(self):
-        """ Checks offsets from the current configuration """
-        if self.configuration not in self.all_configs: # No metastate
-            for m_name in self.motors:
-                setattr(self, m_name+"OffsetRb", 0)
-        else: # Get offset positions
-            base_positions = self.all_configs[self.configuration]
-            motor_positions = self.get_positions()
-            for m_name in motor_positions:
-                offset = motor_positions[m_name] - base_positions[m_name]
-                setattr(self, m_name+"OffsetRb", offset)
+    def check_positions(self):
+        """ Checks current motor positions """
+        # Get current position
+        cur_pos = self.current_pos()
+        for m_name in self.motors:
+            setattr(self, m_name+"PosRb", cur_pos[m_name])
+        ### TODO: should do a configuration check here
     
     # -------------------------------------------------------------------------
     # Control channel properties (static)
@@ -674,7 +636,6 @@ class PCUSequencer(Sequencer):
         
         # Home / initialize stages
         # Re-read the config files
-        # Make XYZ moves possible
         ###################################
     
     # -------------------------------------------------------------------------
@@ -686,26 +647,12 @@ class PCUSequencer(Sequencer):
         ######### Add mini-moves here ##########
         self.checkabort()
         self.checkmeta()
-        self.check_offsets()
+        self.check_positions()
         
         try:
-            # Check for mini-moves (dithers)
-            mini_moves = self.get_mini_moves()
-            # Found mini-moves
-            if len(mini_moves) != 0:
-                # Trigger a PCU move
-                if self.check_mini_moves(mini_moves):
-                    # Load mini-moves into queue
-                    self.motor_moves.append(mini_moves)
-                    # Set destination to preserve configuration
-                    self.destination = self.configuration
-                    # Go to moving
-                    self.to_MOVING()
-                else: # Warn user
-                    self.critical(f"Invalid move for configuration {self.configuration}: {mini_moves}")
-            
             self.process_request()
             self.process_pos_request()
+            self.process_move_request()
 
         # Enter the faulted state if a channel is disconnected while running
         except PVDisconnectException as err:
@@ -721,19 +668,13 @@ class PCUSequencer(Sequencer):
         """ Process the MOVING state """
         self.checkabort()
         self.checkmeta()
-        self.check_offsets()
+        self.check_positions()
         
         try:
-            
-            # Check for mini-move keywords
-            mini_moves = self.get_mini_moves()
-            if len(mini_moves) != 0:
-                self.critical("Send stop signal before moving to new position.")
-
-            # Check the request keyword and
-            # start the reconfig process, if necessary
+            # Check the request keywords
             self.process_request()
             self.process_pos_request()
+            self.process_move_request()
             
             # If there are moves in the queue and previous moves are done
             if len(self.motor_moves) != 0 and self.move_complete():

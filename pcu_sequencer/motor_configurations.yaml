@@ -5,7 +5,7 @@ valid_motors: # Motors
 #     - m3
     - m4
 #     rot
-limits:
+motor_limits:
     m1: [0, 300]
     m2: [0, 190]
     m3: [0, 100]
@@ -16,9 +16,12 @@ tolerance: # Maximum position error
     m3: .005
     m4: .005
     rot: .0031
-fiber_limits: # XY limits with fiber extended
-    m1: [115, 185]
-    m2: [85, 155]
-mask_limits: # XY limits with mask extended
-    m1: [95, 115]
-    m2: [175, 190]
+fiber_center: # XY limits with fiber extended
+    m1: 150
+    m2: 120
+mask_center: # XY limits with mask extended
+    m1: 105
+    m2: 184
+safe_radius: # safe radius around center of k-mirror hole
+    fiber: 35
+    mask: 35
