@@ -124,6 +124,8 @@ class collisionSequencer(Sequencer):
         for _, pv in self.motors.items():
             pv.stop()
             pv.disable()
+        
+        self.reset_command()
     
     def load_restricted_moves(self):
         """ Loads moves possible from an invalid state """
@@ -169,6 +171,13 @@ class collisionSequencer(Sequencer):
             for m_name in ['m1', 'm2']: # Append operators to valid motors
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
                 if pos_dif[m_name] < 0: self.allowed_motors[m_name] = operator.le
+    
+    def reset_command(self):
+        """ Resets the commanded positions of the motors """
+        cur_pos = self.current_pos()
+        for m_name in self.valid_motors:
+            motor = self.motors[m_name]
+            motor.set_pos(cur_pos[m_name])
     
     def check_all_pos(self):
         """ Checks all positions for validity """
