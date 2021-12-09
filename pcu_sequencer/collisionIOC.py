@@ -152,7 +152,7 @@ class collisionSequencer(Sequencer):
             self.critical(f"The fiber bundle is outside of allowed bounds. " \
                           f"Please move towards the k-mirror center, {PCUPos.fiber_center}.")
             # Get relevant signs
-            instr_center = PCUPos(m1=PCUPos.fiber_center['m1'], m2=PCUPos.fiber_center['m2'], m3=0)
+            instr_center = PCUPos(m1=PCUPos.fiber_center['m1'], m2=PCUPos.fiber_center['m2'], m3=0, m4=0)
             move_to_center = True
         
         # Pinhole mask positioning
@@ -163,7 +163,7 @@ class collisionSequencer(Sequencer):
             self.critical("The pinhole mask is outside of allowed bounds." \
                          f"Please move towards the k-mirror center, {PCUPos.mask_center}.")
             # Get relevant signs
-            instr_center = PCUPos(m1=PCUPos.mask_center['m1'], m2=PCUPos.mask_center['m2'], m3=0)
+            instr_center = PCUPos(m1=PCUPos.mask_center['m1'], m2=PCUPos.mask_center['m2'], m3=0, m4=0)
             move_to_center = True
         
         if cur_pos.fiber_extended() and cur_pos.mask_extended() and move_to_center:
