@@ -349,7 +349,7 @@ class collisionSequencer(Sequencer):
             # Make sure moves are towards valid position
             self.load_restricted_moves()
             # Disable motors that aren't allowed
-            for m_name in valid_motors:
+            for m_name in self.valid_motors:
                 if m_name not in self.allowed_motors:
                     self.motors[m_name].disable()
             
