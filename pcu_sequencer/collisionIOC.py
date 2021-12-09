@@ -299,7 +299,7 @@ class collisionSequencer(Sequencer):
 
             if not self.same_message:
                 if cur_pos.is_valid():
-                    self.message("Current position is valid. Please reinitialize to use motors normally.\n" \
+                    self.message("Current position is valid. Please reinitialize to use motors normally." \
                                 "(run 'caput k1:ao:pcu:collisions:request reinit'.)")
                 else:
                     self.critical("Current position is invalid. Please run 'caput k1:ao:pcu:collisions:request allow_moves'" \
@@ -311,9 +311,9 @@ class collisionSequencer(Sequencer):
             self.process_request()
 
             # Reset the message counter if a new state is reached
-            if self.state != self.collisionStates.STOPPED: self.same_message = False
+            if self.state != collisionStates.STOPPED: self.same_message = False
         
-        except:
+        except PVDisconnectException as err:
             self.critical(str(err))
             self.stop_motors()
             self.to_FAULT()
@@ -349,7 +349,7 @@ class collisionSequencer(Sequencer):
             self.process_request()
             
             # Check for state change
-            if self.state != self.collisionStates.RESTRICTED: self.same_message = False
+            if self.state != collisionStates.RESTRICTED: self.same_message = False
             
         # Enter the FAULT state if a channel is disconnected while running
         except PVDisconnectException as err:
