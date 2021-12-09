@@ -32,15 +32,14 @@ KMIRR_RADIUS = 50 # mm - true radius of the k-mirror rotator
 
 class collisionStates(Enum):
     INIT = 0
-    STANDBY = 1
+    MONITORING = 1
     STOPPED = 2
     RESTRICTED = 3
-    TERMINATE = 4
+    FAULT = 4
+    TERMINATE = 5
 
 # Class containing state machine
 class collisionSequencer(Sequencer):
-    
-    self.allowed_motors = {}
     
     # -------------------------------------------------------------------------
     # Initialize the sequencer
@@ -48,8 +47,13 @@ class collisionSequencer(Sequencer):
     def __init__(self, prefix="collisions", tickrate=0.5):
         super().__init__(prefix, tickrate=tickrate)
         
+        self.allowed_motors = {}
+        self.load_config_files()
+        self.load_motors(prefix)
+        
         # Create new channel for metastate
         self._seqmetastate = self.ioc.registerString(f'{prefix}:stst')
+        self.same_message = False
         
         self.prepare(collisionStates)
     
@@ -134,7 +138,7 @@ class collisionSequencer(Sequencer):
             self.critical("The fiber bundle is extended. Please retract the fiber bundle stage (motor 4).")
             self.allowed_motors['m4'] = operator.le
         elif fiber_in_hole and not fiber_allowed: # Outside standard bounds
-            self.critical(f"The fiber bundle is outside of allowed bounds. " \ 
+            self.critical(f"The fiber bundle is outside of allowed bounds. " \
                           f"Please move towards the k-mirror center, {PCUPos.fiber_center}.")
             # Get relevant signs
             instr_center = PCUPos(m1=PCUPos.fiber_center[0], m2=PCUPos.fiber_center[1], m3=0)
@@ -161,6 +165,22 @@ class collisionSequencer(Sequencer):
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
                 if pos_dif[m_name] < 0: self.allowed_motors[m_name] = operator.le
     
+    def check_all_pos(self):
+        """ Checks all positions for validity """
+        cur_pos = self.current_pos()
+        future_pos = self.commanded_pos()
+
+        if not cur_pos.is_valid():
+            self.critical(f"Current position is invalid: {cur_pos}. Disabling all motors.")
+            self.stop_motors()
+            return False
+        elif not future_pos.is_valid():
+            self.critical(f"Commanded position is invalid: {future_pos}. Disabling all motors.")
+            self.stop_motors()
+            return False
+        
+        return True
+    
     def check_future_pos(self):
         """ Checks for restricted moves """
         # Get position difference
@@ -173,6 +193,7 @@ class collisionSequencer(Sequencer):
                 self.critical("Invalid move requested.")
                 self.stop_motors()
                 self.to_STOPPED()
+                return
     
     # -------------------------------------------------------------------------
     # I/O processing
@@ -180,7 +201,26 @@ class collisionSequencer(Sequencer):
     
     def process_request(self):
         """ Processes input from the request keyword """
-        pass
+        request = self.seqrequest.lower()
+        
+        if request=='reinit':
+            if self.state==collisionStates.MONITORING or self.state==collisionStates.FAULT:
+                self.to_INIT()
+            elif self.current_pos().is_valid():
+                self.to_INIT()
+            else:
+                self.critical("Cannot reinitialize from an invalid position.")
+        
+        if request=='allow_moves':
+            if self.state==collisionStates.STOPPED:
+                self.message("Turning on directional moves for safe axes.")
+                self.to_RESTRICTED()
+            elif self.state==collisionStates.RESTRICTED:
+                self.critical("Directional moves are already enabled.")
+            elif self.state==collisionStates.FAULT:
+                self.critical("Sequencer must be reinitialized in order to move.")
+            else:
+                self.critical("All moves are enabled.")
     
     def checkabort(self):
         """ Check if the abort flag is set, and stop the sequencer if so """
@@ -202,17 +242,21 @@ class collisionSequencer(Sequencer):
     def process_INIT(self):
         self.checkmeta()
         try:
-            ###################################
-            ## Any initialization stuff here ##
-            ###################################
+            #########################################
+            ## Any other initialization stuff here ##
+            #########################################
 
-            ###################################
+            #########################################
             PCUPos.load_motors()
-            self.to_MONITORING()
+            self.load_config_files()
+            if self.check_all_pos():
+                self.to_MONITORING()
+            else: self.to_STOPPED()
+            
         except PVDisconnectException as err:
             self.critical(str(err))
             self.stop_motors()
-            self.to_STOPPED()
+            self.to_FAULT()
     
     # -------------------------------------------------------------------------
     # MONITORING state
@@ -222,23 +266,18 @@ class collisionSequencer(Sequencer):
         self.checkabort()
         self.checkmeta()
         self.process_request()
-        try:
-            cur_pos = self.current_pos()
-            future_pos = self.commanded_pos()
+        try: # Check current and future positions
+            if not self.check_all_pos():
+                self.to_STOPPED()
             
-            if not cur_pos.is_valid():
-                self.critical(f"Current position is invalid: {cur_pos}. Disabling all motors.")
-                self.stop_motors()
-                self.to_STOPPED()
-            elif not future_pos.is_valid():
-                self.critical(f"Commanded position is invalid {future_pos}. Disabling all motors")
-                self.stop_motors()
-                self.to_STOPPED()
-        # Enter the STOPPED state if a channel is disconnected while running
+            # Process user requests
+            self.process_request()
+        
+        # Enter the FAULT state if a channel is disconnected while running
         except PVDisconnectException as err:
             self.critical(str(err))
             self.stop_motors()
-            self.to_STOPPED()
+            self.to_FAULT()
     
     # -------------------------------------------------------------------------
     # STOPPED state
@@ -247,9 +286,32 @@ class collisionSequencer(Sequencer):
         # Send stop command until it's valid again?
         self.checkabort()
         self.checkmeta()
+        try:
+            # Make sure the motors are disabled
+            self.stop_motors()
+
+            cur_pos = self.current_pos()
+
+            if not self.same_message:
+                if cur_pos.is_valid():
+                    self.message("Current position is valid. Please reinitialize to use motors normally.\n" \
+                                "(run 'caput k1:ao:pcu:collisions:request reinit'.)")
+                else:
+                    self.critical("Current position is invalid. Please run 'caput k1:ao:pcu:collisions:request allow_moves'" \
+                                 " to turn on directional moves only.")
+
+            self.same_message = True
+
+            # Process user requests
+            self.process_request()
+
+            # Reset the message counter if a new state is reached
+            if self.state != self.collisionStates.STOPPED: self.same_message = False
         
-        # Make sure the motors are disabled
-        self.stop_motors()
+        except:
+            self.critical(str(err))
+            self.stop_motors()
+            self.to_FAULT()
     
     # -------------------------------------------------------------------------
     # RESTRICTED state
@@ -261,6 +323,7 @@ class collisionSequencer(Sequencer):
         self.process_request()
         
         try:
+            # Make sure moves are towards valid position
             self.load_restricted_moves()
             # Disable motors that aren't allowed
             for m_name in valid_motors:
@@ -268,17 +331,45 @@ class collisionSequencer(Sequencer):
                     self.motors[m_name].disable()
             
             self.check_future_pos()
-        # Enter the STOPPED state if a channel is disconnected while running
+            
+            # Check whether position is valid again
+            cur_pos = self.current_pos()
+            if not self.same_message:
+                if cur_pos.is_valid():
+                    self.message("Current position is valid. Please reinitialize to use motors normally.\n" \
+                            "(run 'caput k1:ao:pcu:collisions:request reinit'.)")
+            self.same_message = True
+            
+            # Process user input
+            self.process_request()
+            
+            # Check for state change
+            if self.state != self.collisionStates.RESTRICTED: self.same_message = False
+            
+        # Enter the FAULT state if a channel is disconnected while running
         except PVDisconnectException as err:
             self.critical(str(err))
             self.stop_motors()
-            self.to_STOPPED()
+            self.to_FAULT()
+    
+    # -------------------------------------------------------------------------
+    # FAULT state
+    # -------------------------------------------------------------------------
+    def process_FAULT(self):
+        self.checkabort()
+        self.checkmeta()
+        if not self.same_message:
+            self.critical("The collision avoidance sequencer is down. Do not run the motors.")
+        self.same_message = True
+        
+        self.process_request()
+        if self.state != collisionStates.FAULT: self.same_message = False
+        
     
     # -------------------------------------------------------------------------
     # TERMINATE state
     # -------------------------------------------------------------------------
     def process_TERMINATE(self):
-        # Send stop command until it's valid again?
         pass
     
     # -------------------------------------------------------------------------
@@ -307,7 +398,7 @@ if __name__ == "__main__":
         SequencerTask1 = 0
 
     # The main sequencer
-    setup = PCUSequencer(prefix='k1:ao:pcu')
+    setup = collisionSequencer(prefix='k1:ao:pcu')
 
     # Create a task pool and register the sequencers that need to run
     tasks = Tasks(TASKS, 'collisions', workers=len(TASKS))

@@ -164,11 +164,11 @@ class PCUPos():
     
     def fiber_extended(self):
         if not 'm4' in self.mdict: return False
-        else: return self.m4 > 0
+        else: return not self.motor_in_position('m4', 0)
     
     def mask_extended(self):
         if not 'm3' in self.mdict: return False
-        else: return self.m3 > 0
+        else: return not self.motor_in_position('m3', 0)
     
     def is_valid(self): # May need to move to sequencer.py
         """ Checks whether a position is valid or not """

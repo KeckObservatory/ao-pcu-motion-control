@@ -15,8 +15,8 @@ class PCUMotor():
         'enable_chan': ':enable',
         'enableRb': ':enableRb',
         'home_chan': ':home',
-        'torque_chan': ':enableTorque',
-        'torqueRb': ':enableTorqueRb',
+#         'torque_chan': ':enableTorque',
+#         'torqueRb': ':enableTorqueRb',
         'moving': '.MOVN',
         'spmg': '.SPMG',
     }
@@ -46,18 +46,18 @@ class PCUMotor():
         """ Checks whether the motor is enabled """
         # Software enable channel is backwards
         # Torque enable works fine
-        return (not self.enableRb.get()) and self.torqueRb.get()
+        return (not self.enableRb.get()) #and self.torqueRb.get()
     
     def enable(self):
         """ Enables the motor """
         self.check_connection()
         self.enable_chan.put(0) # Enable software
-        self.torque_chan.put(1) # Enable torque
+#         self.torque_chan.put(1) # Enable torque
     
     def disable(self):
         """ Disables the motor """
-        self.check_connection()
-        self.torque_chan.put(0) # Disable torque
+        # Can result from lost connection
+#         self.torque_chan.put(0) # Disable torque
         self.enable_chan.put(1) # Disable software
     
     def isMoving(self):
