@@ -127,10 +127,9 @@ class collisionSequencer(Sequencer):
             pv.disable()
     
     def motors_enabled(self):
-        enabled = []
         for _, motor in self.motors.items():
-            enabled.append(motor.isEnabled())
-        return enabled
+            if motor.isEnabled(): return True
+        return False
     
     def load_restricted_moves(self):
         """ Loads moves possible from an invalid state """
@@ -307,7 +306,7 @@ class collisionSequencer(Sequencer):
         self.checkmeta()
         try:
             # Make sure the motors are disabled
-            if any(self.motors_enabled()):
+            if self.motors_enabled():
                 self.critical("Motors cannot be enabled in STOPPED state.")
                 self.stop_motors()
 
