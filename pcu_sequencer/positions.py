@@ -18,9 +18,6 @@ class PCUPos():
         for key, val in motor_info.items():
             setattr(PCUPos, key, val)
     
-    def test(self):
-        print(self.fiber_center)
-    
     def __init__(self, pos_dict=None, name=None, **kwargs):
         """ 
         Initializes a position with a dictionary or with m# arguments.
@@ -72,6 +69,20 @@ class PCUPos():
                 elif other.type == 'absolute': new_dict[m_name] = val
         
         return PCUPos(new_dict)
+    
+    def __neg__(self):
+        if type(self)==PCUMove and not self.type=='relative':
+            raise ValueError("Can't negate absolute move")
+        move = PCUMove()
+        for m_name, val in self.mdict.items():
+            if val is not None:
+                move[m_name] = -val
+        return move
+    
+    def __sub__(self, other):
+        if type(other)==PCUMove:
+            raise ValueError("Can only subtract PCUPos, not PCUMove.")
+        return self + (-other)
     
     def __eq__(self, other):
         return self.mdict == other.mdict
@@ -150,6 +161,14 @@ class PCUPos():
             radius = check_rad
 
         return self.in_circle(center, radius)
+    
+    def fiber_extended(self):
+        if not 'm4' in self.mdict: return False
+        else: return self.m4 > 0
+    
+    def mask_extended(self):
+        if not 'm3' in self.mdict: return False
+        else: return self.m3 > 0
     
     def is_valid(self): # May need to move to sequencer.py
         """ Checks whether a position is valid or not """

@@ -16,6 +16,7 @@ from enum import Enum
 import signal
 import sys
 import os
+import operator
 
 import PCU_util as util
 from positions import PCUPos, PCUMove
@@ -27,6 +28,8 @@ coloredlogs.DEFAULT_DATE_FORMAT = '%Y-%m-%d %H:%M:%S.%f'
 coloredlogs.install(level='DEBUG')
 log = logging.getLogger('')
 
+KMIRR_RADIUS = 50 # mm - true radius of the k-mirror rotator
+
 class collisionStates(Enum):
     INIT = 0
     STANDBY = 1
@@ -36,6 +39,8 @@ class collisionStates(Enum):
 
 # Class containing state machine
 class collisionSequencer(Sequencer):
+    
+    self.allowed_motors = {}
     
     # -------------------------------------------------------------------------
     # Initialize the sequencer
@@ -48,7 +53,7 @@ class collisionSequencer(Sequencer):
         
         self.prepare(collisionStates)
     
-    def load_config_files(self):
+    def load_config_files(self): # Figure this out later
         """ Loads configuration files into class variables """
         # Update position class
         PCUPos.load_motors()
@@ -80,6 +85,7 @@ class collisionSequencer(Sequencer):
     
     def stop(self):
         """ halts operation """
+        self.stop_motors()
         # Call the superclass stop method
         super().stop()
     
@@ -109,6 +115,64 @@ class collisionSequencer(Sequencer):
         for _, pv in self.motors.items():
             pv.stop()
             pv.disable()
+    
+    def load_restricted_moves(self):
+        """ Loads moves possible from an invalid state """
+        self.allowed_motors.clear()
+        
+        # Check current position
+        cur_pos = self.current_pos()
+        fiber_in_hole = cur_pos.in_hole('fiber', check_rad=KMIRR_RADIUS) # Real bounds
+        fiber_allowed = cur_pos.in_hole('fiber') # Allowed bounds
+        mask_in_hole = cur_pos.in_hole('mask', check_rad=KMIRR_RADIUS) # Real bounds
+        mask_allowed = cur_pos.in_hole('mask') # Allowed bounds
+        
+        ### Calculate which axis/axes should allow motion
+        move_to_center = False
+        # Fiber positioning
+        if not fiber_in_hole and cur_pos.fiber_extended():
+            self.critical("The fiber bundle is extended. Please retract the fiber bundle stage (motor 4).")
+            self.allowed_motors['m4'] = operator.le
+        elif fiber_in_hole and not fiber_allowed: # Outside standard bounds
+            self.critical(f"The fiber bundle is outside of allowed bounds. " \ 
+                          f"Please move towards the k-mirror center, {PCUPos.fiber_center}.")
+            # Get relevant signs
+            instr_center = PCUPos(m1=PCUPos.fiber_center[0], m2=PCUPos.fiber_center[1], m3=0)
+            move_to_center = True
+        
+        # Pinhole mask positioning
+        if not mask_in_hole and cur_pos.mask_extended():
+            self.critical("The pinhole mask is extended. Please retract the pinhole mask (motor 3).")
+            self.allowed_motors['m3'] = operator.le
+        elif mask_in_hole and not mask_allowed:
+            self.critical("The pinhole mask is outside of allowed bounds." \
+                         f"Please move towards the k-mirror center, {PCUPos.mask_center}.")
+            # Get relevant signs
+            instr_center = PCUPos(m1=PCUPos.mask_center[0], m2=PCUPos.mask_center[1], m3=0)
+            move_to_center = True
+        
+        if cur_pos.fiber_extended and cur_pos.mask_extended and move_to_center:
+            # Must be fixed manually
+            self.critical("The PCU stages must be reset manually.")
+            self.to_STOPPED()
+        elif move_to_center:
+            pos_diff = instr_center - cur_pos
+            for m_name in ['m1', 'm2']: # Append operators to valid motors
+                if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
+                if pos_dif[m_name] < 0: self.allowed_motors[m_name] = operator.le
+    
+    def check_future_pos(self):
+        """ Checks for restricted moves """
+        # Get position difference
+        cur_pos = self.current_pos()
+        future_pos = self.future_pos()
+        
+        # Check motor moves are in right direction
+        for m_name, op in self.allowed_motors.items():
+            if not op(future_pos[m_name], cur_pos[m_name]):
+                self.critical("Invalid move requested.")
+                self.stop_motors()
+                self.to_STOPPED()
     
     # -------------------------------------------------------------------------
     # I/O processing
@@ -194,11 +258,21 @@ class collisionSequencer(Sequencer):
         # Send stop command until it's valid again?
         self.checkabort()
         self.checkmeta()
+        self.process_request()
         
-        # Check which axis/axes should allow motion
-        
-        
-        # Continually disable all other motors
+        try:
+            self.load_restricted_moves()
+            # Disable motors that aren't allowed
+            for m_name in valid_motors:
+                if m_name not in self.allowed_motors:
+                    self.motors[m_name].disable()
+            
+            self.check_future_pos()
+        # Enter the STOPPED state if a channel is disconnected while running
+        except PVDisconnectException as err:
+            self.critical(str(err))
+            self.stop_motors()
+            self.to_STOPPED()
     
     # -------------------------------------------------------------------------
     # TERMINATE state
