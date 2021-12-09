@@ -203,7 +203,7 @@ class collisionSequencer(Sequencer):
         """ Checks for restricted moves """
         # Get position difference
         cur_pos = self.current_pos()
-        future_pos = self.future_pos()
+        future_pos = self.commanded_pos()
         
         # Check motor moves are in right direction
         for m_name, op in self.allowed_motors.items():
