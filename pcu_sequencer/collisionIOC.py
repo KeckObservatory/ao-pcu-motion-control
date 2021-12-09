@@ -307,6 +307,9 @@ class collisionSequencer(Sequencer):
         try:
             # Make sure the motors are disabled
             if self.motors_enabled():
+                self.message(f"M1 enabled?: {self.motors['m1'].isEnabled()}")
+                self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
+                self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
                 self.critical("Motors cannot be enabled in STOPPED state.")
                 self.stop_motors()
 
