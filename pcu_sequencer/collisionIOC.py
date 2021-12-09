@@ -166,7 +166,7 @@ class collisionSequencer(Sequencer):
             instr_center = PCUPos(m1=PCUPos.mask_center['m1'], m2=PCUPos.mask_center['m2'], m3=0)
             move_to_center = True
         
-        if cur_pos.fiber_extended and cur_pos.mask_extended and move_to_center:
+        if cur_pos.fiber_extended() and cur_pos.mask_extended() and move_to_center:
             # Must be fixed manually
             self.critical("The PCU stages must be reset manually.")
             self.to_STOPPED()
