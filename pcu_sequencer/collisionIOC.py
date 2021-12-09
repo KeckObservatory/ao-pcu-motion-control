@@ -133,6 +133,7 @@ class collisionSequencer(Sequencer):
     
     def load_restricted_moves(self):
         """ Loads moves possible from an invalid state """
+        old_motors = self.allowed_motors.copy()
         self.allowed_motors.clear()
         
         # Check current position
@@ -146,42 +147,45 @@ class collisionSequencer(Sequencer):
         move_to_center = False
         # Fiber positioning
         if not fiber_in_hole and cur_pos.fiber_extended():
-            self.critical("The fiber bundle is extended. Please retract the fiber bundle stage (motor 4).")
+            if not self.same_message:
+                self.critical("The fiber bundle is extended. Please fully retract the fiber bundle stage (motor 4).")
             self.allowed_motors['m4'] = operator.le
         elif fiber_in_hole and not fiber_allowed: # Outside standard bounds
-            self.critical(f"The fiber bundle is outside of allowed bounds. " \
-                          f"Please move towards the k-mirror center, {PCUPos.fiber_center}.")
+            if not self.same_message:
+                self.critical(f"The fiber bundle is outside of allowed bounds. " \
+                              f"Please move towards the k-mirror center, {PCUPos.fiber_center}.")
             # Get relevant signs
             instr_center = PCUPos(m1=PCUPos.fiber_center['m1'], m2=PCUPos.fiber_center['m2'], m3=0, m4=0)
             move_to_center = True
         
         # Pinhole mask positioning
         if not mask_in_hole and cur_pos.mask_extended():
-            self.critical("The pinhole mask is extended. Please retract the pinhole mask (motor 3).")
+            if not self.same_message:
+                self.critical("The pinhole mask is extended. Please retract the pinhole mask (motor 3).")
             self.allowed_motors['m3'] = operator.le
         elif mask_in_hole and not mask_allowed:
-            self.critical("The pinhole mask is outside of allowed bounds." \
-                         f"Please move towards the k-mirror center, {PCUPos.mask_center}.")
+            if not self.same_message:
+                self.critical("The pinhole mask is outside of allowed bounds." \
+                             f"Please move towards the k-mirror center, {PCUPos.mask_center}.")
             # Get relevant signs
             instr_center = PCUPos(m1=PCUPos.mask_center['m1'], m2=PCUPos.mask_center['m2'], m3=0, m4=0)
             move_to_center = True
         
         if cur_pos.fiber_extended() and cur_pos.mask_extended() and move_to_center:
             # Must be fixed manually
-            self.critical("The PCU stages must be reset manually.")
+            if not self.same_message:
+                self.critical("The PCU stages must be reset manually.")
             self.to_STOPPED()
         elif move_to_center:
             pos_diff = instr_center - cur_pos
             for m_name in ['m1', 'm2']: # Append operators to valid motors
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
                 if pos_diff[m_name] < 0: self.allowed_motors[m_name] = operator.le
-    
-#     def reset_command(self):
-#         """ Resets the commanded positions of the motors """
-#         cur_pos = self.current_pos()
-#         for m_name in self.valid_motors:
-#             motor = self.motors[m_name]
-#             motor.set_pos(cur_pos[m_name])
+        
+        self.same_message = True
+        
+        if self.allowed_motors != old_motors:
+            self.same_message = False
     
     def check_all_pos(self):
         """ Checks all positions for validity """
@@ -307,9 +311,9 @@ class collisionSequencer(Sequencer):
         try:
             # Make sure the motors are disabled
             if self.motors_enabled():
-                self.message(f"M1 enabled?: {self.motors['m1'].isEnabled()}")
-                self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
-                self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
+#                 self.message(f"M1 enabled?: {self.motors['m1'].isEnabled()}")
+#                 self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
+#                 self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
                 self.critical("Motors cannot be enabled in STOPPED state.")
                 self.stop_motors()
 
@@ -323,7 +327,7 @@ class collisionSequencer(Sequencer):
                     self.critical("Current position is invalid. Please run 'caput k1:ao:pcu:collisions:request allow_moves'" \
                                  " to turn on directional moves only.")
 
-            self.same_message = True
+                self.same_message = True
 
             # Process user requests
             self.process_request()
@@ -361,7 +365,7 @@ class collisionSequencer(Sequencer):
                 if cur_pos.is_valid():
                     self.message("Current position is valid. Please reinitialize to use motors normally.\n" \
                             "(run 'caput k1:ao:pcu:collisions:request reinit'.)")
-            self.same_message = True
+                self.same_message = True
             
             # Process user input
             self.process_request()
