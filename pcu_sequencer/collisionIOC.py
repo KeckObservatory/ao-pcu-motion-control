@@ -133,11 +133,17 @@ class collisionSequencer(Sequencer):
         for _, motor in self.motors.items():
             motor.disable()
     
-    def stop_and_disable(self):
+    def stop_and_reset(self):
         """ Disable motors, giving the system time to reset values """
         self.stop_motors()
         time.sleep(0.5)
         self.reset_motors()
+        time.sleep(0.5)
+        self.disable_motors()
+    
+    def stop_and_disable(self):
+        """ Stop motors and disable, with no reset position """
+        self.stop_motors()
         time.sleep(0.5)
         self.disable_motors()
     
@@ -209,11 +215,11 @@ class collisionSequencer(Sequencer):
 
         if not cur_pos.is_valid():
             self.critical(f"Current position is invalid: {cur_pos}. Disabling all motors.")
-            self.stop_and_disable()
+            self.stop_and_reset()
             return False
         elif not future_pos.is_valid():
             self.critical(f"Commanded position is invalid: {future_pos}. Disabling all motors.")
-            self.stop_and_disable()
+            self.stop_and_reset()
             return False
         
         return True
@@ -228,7 +234,7 @@ class collisionSequencer(Sequencer):
         for m_name, op in self.allowed_motors.items():
             if not op(future_pos[m_name], cur_pos[m_name]):
                 self.critical("Invalid move requested.")
-                self.stop_and_disable()
+                self.stop_and_reset()
                 self.to_STOPPED()
                 return
     
@@ -330,7 +336,7 @@ class collisionSequencer(Sequencer):
                 self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
                 self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
                 self.critical("Motors cannot be enabled in STOPPED state.")
-                self.stop_and_disable()
+                self.stop_and_reset()
 
             cur_pos = self.current_pos()
 
