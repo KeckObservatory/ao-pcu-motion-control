@@ -59,6 +59,7 @@ class PCUPos():
     
     def __add__(self, other): # TODO: change this function to only accept PCUMoves
         """ Add PCUPos to PCUMove """
+        print(f"Adding {self} and {other}")
         if not type(other)==PCUMove:
             raise ValueError("Can only add PCUMove to PCUPos")
         
