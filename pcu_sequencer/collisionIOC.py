@@ -265,6 +265,7 @@ class collisionSequencer(Sequencer):
         if request=='allow_moves':
             if self.state==collisionStates.STOPPED:
                 self.message("Turning on directional moves for safe axes.")
+                self.reset_motors()
                 self.to_RESTRICTED()
             elif self.state==collisionStates.RESTRICTED:
                 self.critical("Directional moves are already enabled.")
