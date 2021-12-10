@@ -143,9 +143,9 @@ class collisionSequencer(Sequencer):
         self.stop_motors()
         time.sleep(0.5)
         self.disable_motors()
-#         time.sleep(0.5)
-#         self.reset_motors()
-#         time.sleep(0.5)
+        time.sleep(0.5)
+        self.reset_motors()
+        time.sleep(0.5)
         self.go_motors()
     
     def stop_and_disable(self):
