@@ -128,6 +128,7 @@ class collisionSequencer(Sequencer):
     def reset_motors(self):
         for _, motor in self.motors.items():
             motor.reset_pos()
+            motor.go_chan.put(1)
     
     def disable_motors(self):
         for _, motor in self.motors.items():
@@ -142,7 +143,8 @@ class collisionSequencer(Sequencer):
         self.stop_motors()
         time.sleep(0.5)
         self.disable_motors()
-#         self.reset_motors()
+        time.sleep(0.5)
+        self.reset_motors()
         time.sleep(0.5)
         self.go_motors()
     
@@ -151,6 +153,7 @@ class collisionSequencer(Sequencer):
         self.stop_motors()
         time.sleep(0.5)
         self.disable_motors()
+        self.go_motors()
     
     def motors_enabled(self):
         for _, motor in self.motors.items():
