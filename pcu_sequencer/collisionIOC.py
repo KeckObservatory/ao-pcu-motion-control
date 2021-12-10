@@ -133,13 +133,18 @@ class collisionSequencer(Sequencer):
         for _, motor in self.motors.items():
             motor.disable()
     
+    def go_motors(self):
+        for _, motor in self.motors.items():
+            motor.go_chan.put(1)
+    
     def stop_and_reset(self):
         """ Disable motors, giving the system time to reset values """
         self.stop_motors()
         time.sleep(0.5)
-        self.reset_motors()
-        time.sleep(0.5)
         self.disable_motors()
+#         self.reset_motors()
+        time.sleep(0.5)
+        self.go_motors()
     
     def stop_and_disable(self):
         """ Stop motors and disable, with no reset position """
