@@ -272,6 +272,9 @@ class collisionSequencer(Sequencer):
                 self.critical("Sequencer must be reinitialized in order to move.")
             else:
                 self.critical("All moves are enabled.")
+        
+        if request=='shutdown':
+            self.stop()
     
     def checkabort(self):
         """ Check if the abort flag is set, and stop the sequencer if so """
