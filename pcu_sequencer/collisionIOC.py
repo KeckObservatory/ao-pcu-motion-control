@@ -297,6 +297,11 @@ class collisionSequencer(Sequencer):
             #########################################
             PCUPos.load_motors()
             self.load_config_files()
+            
+            # Reset motor values to current position
+            self.reset_motors()
+            
+            # Check current position
             if self.check_all_pos():
                 self.to_MONITORING()
             else: self.to_STOPPED()
