@@ -84,7 +84,7 @@ class PCUMotor():
         self.go_chan.put(1)
     
     def reset_pos(self):
-        pos = self.get_pos()
+        pos = round(self.get_pos(), 2)
         self.set_chan.put(pos)
 
     def stop(self): 
