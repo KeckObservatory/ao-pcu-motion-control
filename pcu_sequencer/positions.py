@@ -85,6 +85,7 @@ class PCUPos():
         return self + (-other)
     
     def __eq__(self, other):
+        if type(self) != type(other): return False
         return self.mdict == other.mdict
     
     def __getitem__(self, key):

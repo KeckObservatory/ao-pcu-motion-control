@@ -2,6 +2,8 @@ from epics import PV
 from kPySequencer.Sequencer import Sequencer, PVDisconnectException, PVConnectException
 import time
 
+collision_channel = "k1:ao:pcu:collisions:heartbeat"
+
 # Motor class
 class PCUMotor():
     
@@ -37,8 +39,13 @@ class PCUMotor():
             setattr(self, channel_key, channel_PV)
             # Set attribute name
             setattr(self, channel_key+"_name", full_channel)
+        
+        self.collision_avoidance = PV(collision_channel)
     
     def check_connection(self):
+        if not self.collision_avoidance.connect():
+            raise PVDisconnectException(f"The collision avoidance sequencer is not running. " \
+                                        "Please start the collision avoidance sequencer before reinitializing.")
         for pv in self.channel_list:
             if not pv.connect():
                 raise PVDisconnectException(f"Channel {pv.pvname} has disconnected.")
@@ -53,7 +60,7 @@ class PCUMotor():
     def enable(self):
         """ Enables the motor """
         self.check_connection()
-#         self.enable_chan.put(0) # Enable software
+        self.enable_chan.put(0) # Enable software
         self.torque_chan.put(1) # Enable torque
     
     def disable(self):

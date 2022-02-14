@@ -41,8 +41,9 @@ class collisionStates(Enum):
     MONITORING = 1
     STOPPED = 2
     RESTRICTED = 3
-    FAULT = 4
-    TERMINATE = 5
+    DISABLED = 4
+    FAULT = 5
+    TERMINATE = 6
 
 # Class containing state machine
 class collisionSequencer(Sequencer):
@@ -63,7 +64,7 @@ class collisionSequencer(Sequencer):
         
         self.prepare(collisionStates)
     
-    def load_config_files(self): # Figure this out later
+    def load_config_files(self):
         """ Loads configuration files into class variables """
         # Update position class
         PCUPos.load_motors()
@@ -174,6 +175,7 @@ class collisionSequencer(Sequencer):
         
         ### Calculate which axis/axes should allow motion
         move_to_center = False
+        
         # Fiber positioning
         if not fiber_in_hole and cur_pos.fiber_extended():
             if not self.same_message:
@@ -253,11 +255,18 @@ class collisionSequencer(Sequencer):
     def process_request(self):
         """ Processes input from the request keyword """
         request = self.seqrequest.lower()
+        valid_pos = self.current_pos().is_valid()
+        
+        if request=='enable':
+            if self.state==collisionStates.MONITORING:
+                self.critical("Collision avoidance is already enabled.")
+            else:
+                request = 'reinit'
         
         if request=='reinit':
             if self.state==collisionStates.MONITORING or self.state==collisionStates.FAULT:
                 self.to_INIT()
-            elif self.current_pos().is_valid():
+            elif valid_pos:
                 self.to_INIT()
             else:
                 self.critical("Cannot reinitialize from an invalid position.")
@@ -273,6 +282,15 @@ class collisionSequencer(Sequencer):
                 self.critical("Sequencer must be reinitialized in order to move.")
             else:
                 self.critical("All moves are enabled.")
+        
+        if request=='disable':
+            if self.state==collisionStates.FAULT:
+                self.critical("Cannot disable from the FAULT state.")
+                return
+            elif not valid_pos:
+                self.critical("WARNING - the PCU is in an invalid position. " \
+                              "Please be aware of the hardware limits before driving the PCU.")
+            self.to_DISABLE()
         
         if request=='shutdown':
             self.stop()
@@ -417,6 +435,14 @@ class collisionSequencer(Sequencer):
             self.critical(str(err))
             self.stop_and_disable()
             self.to_FAULT()
+    
+    # -------------------------------------------------------------------------
+    # DISABLED state
+    # -------------------------------------------------------------------------
+    def process_DISABLED(self):
+        self.checkabort()
+        self.checkmeta()
+        self.process_request()
     
     # -------------------------------------------------------------------------
     # FAULT state

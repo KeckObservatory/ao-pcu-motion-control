@@ -20,6 +20,7 @@ from enum import Enum
 import signal
 import sys
 import os
+import time
 
 import PCU_util as util
 from positions import PCUPos, PCUMove
@@ -30,8 +31,12 @@ TIME_DELAY = 0.5 # seconds
 HOME = 0 # mm
 
 MOVE_TIME = 45 # seconds
+HOME_TIME = 360 # seconds
 CLEARANCE_PMASK = 35 # mm, including mask radius
 CLEARANCE_FIBER = 35 # mm, including fiber radius
+
+COLLISION_STATUS = "k1:ao:pcu:collisions:stst"
+COLLISION_REQUEST = "k1:ao:pcu:collisions:request"
 
 # Undefined value for mini-move channels
 RESET_VAL = -999.9 # mm, theoretically
@@ -78,11 +83,14 @@ class PCUSequencer(Sequencer):
         self._seqmetastate = self.ioc.registerString(f'{prefix}:stst')
         self._pos = self.ioc.registerString(f'{prefix}:pos')
         self._posRb = self.ioc.registerString(f'{prefix}:posRb')
+        self.caStatus = PV(COLLISION_STATUS)
+        self.caRequest = PV(COLLISION_REQUEST)
         
         self.prepare(PCUStates)
         self.destination = ''
         self.configuration = ''
         self.motor_moves = []
+        self.homing = False
         # Checks whether move has completed
         self.current_move = None
         
@@ -130,11 +138,12 @@ class PCUSequencer(Sequencer):
             for chan_type in ['Offset', 'Pos']: # relative vs. abs moves
                 chan_name = f"{m_name}{chan_type}"
                 # Register IOC channel for setting mini-moves
-                setattr(self, f"_{m_name}Offset"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
+                ### TODO: check this line
+                setattr(self, "_"+chan_name, self.ioc.registerDouble(f'{prefix}:{chan_name}', 
                                                                      initial_value=RESET_VAL))
                 self.add_property(chan_name, dest_read=True)
                 # Register IOC channel for readback positions
-                if chan_type=='Pos': # No offsets from positions anymore
+                if chan_type=='Pos': # No offset readback from positions anymore
                     setattr(self, "_"+chan_name+"Rb", self.ioc.registerDouble(f'{prefix}:{chan_name}Rb'))
                     self.add_property(chan_name+"Rb")
     
@@ -339,7 +348,28 @@ class PCUSequencer(Sequencer):
     
     def trigger_move(self, move):
         """ Triggers move and sets a timer to check if complete """
-        # Check destination again
+        # Special homing sequence
+        if self.homing:
+            for m_name, dest in move.items():
+                if m_name in self.valid_motors and dest=='home':
+                    # Trigger motor homing
+                    self.motors[m_name].enable()
+                    self.motors[m_name].home()
+                    
+                    time.sleep(1) # Wait a second
+                    # Check that it's moving
+                    if not self.motors[m_name].isMoving():
+                        self.critical(f"Motor {m_name} is not homing." \
+                                  " Please check the motors and reinitialize.")
+                        self.to_FAULT()
+                        return
+                    
+            # Start homing timer
+            self.current_move = move
+            self.move_timer.start(seconds=HOME_TIME)
+            return
+        
+        # Check destination for regular move
         dest_pos = self.current_pos() + move
         if not dest_pos.is_valid():
             self.critical(f"Invalid move: {dest_pos}")
@@ -405,9 +435,13 @@ class PCUSequencer(Sequencer):
         
         cur_pos = self.current_pos()
         # Get current positions and compare to destinations
-        for m_name, m_dest in dest_pos.mdict.items():
+        for m_name, m_dest in cur_move.mdict.items():
             if m_name in self.valid_motors:
-                if not cur_pos.motor_in_position(m_name, m_dest):
+                # Homing sequence in progress
+                if self.homing and self.motors[m_name].isMoving():
+                    return False # m_dest is 'home'
+                # Regular move
+                elif not cur_pos.motor_in_position(m_name, m_dest):
                     return False
                 
         # Return True if motors are in position and release current_move
@@ -440,11 +474,17 @@ class PCUSequencer(Sequencer):
         # Call the superclass stop method
         super().stop()
     
-    def home_motors(self):
-        """ Homes the motors (z-stages first, then X and Y) """
-        # Need to check if it will wait for the motor to home
-        for motor in reversed(self.motors):
-            pass # Ask Sylvain when he's less busy
+    def load_home_sequence(self):
+        """ Loads home sequence """
+        self.homing = True
+        self.caRequest.put('disable')
+        self.motor_moves.append({"m3": 'home', "m4": 'home'})
+        self.motor_moves.append({"m1": 'home', "m2": 'home'})
+    
+    def end_home_sequence(self):
+        self.message("Finished homing.")
+        self.homing = False
+        self.caRequest.put('enable')
     
     # -------------------------------------------------------------------------
     # I/O processing
@@ -495,14 +535,24 @@ class PCUSequencer(Sequencer):
             else:
                 self.critical("PCU is not moving.")
         
+        # Reinitialize the sequencer
         if request == 'reinit':
             if self.state != PCUStates.MOVING:
                 self.to_INIT()
             else:
                 self.critical("Send stop signal before reinitializing.")
+        
+        # Start homing the motors
+        if request == 'home':
+            if self.state == PCUStates.INPOS:
+                self.message("Homing motors.")
+                self.load_home_sequence() # homing -> 1, moves appended
+                self.to_MOVING()
+            else:
+                self.critical(f"Can't home motors from state {self.state.name}")
     
     def process_pos_request(self):
-        """ Processes a request for a configuration change """
+        """ Processes a request for a named configuration """
         request = self.config_request.lower()
 
         if request == '':
@@ -524,36 +574,40 @@ class PCUSequencer(Sequencer):
             ### Request from FAULT
         elif self.state == PCUStates.FAULT:
             self.critical("Reinitialize the PCU sequencer before moving.")
+        else:
+            self.critical(f"Moves not available from state {self.state}")
     
     def process_move_request(self):
-        """ Processes a move request """
+        """ Processes a generalized move request """
+        # Check for requested moves
+        move = self.get_moves()
+        if not move: # No moves requested
+            return
+        
         # Check state
         if self.state == PCUStates.MOVING:
-            self.critical("Send stop signal before moving to new position.")
+            self.critical("PCU is moving. Send stop signal before moving to new position.")
             return
         elif self.state != PCUStates.INPOS:
-            self.critical("Moves only valid when in position")
+            self.critical(f"Moves not valid from state {self.state.name}")
             return
         
+        # Get current position
         cur_pos = self.current_pos()
         
-        # Check for mini-moves (dithers)
-        move = self.get_moves()
-        # Found mini-moves
-        if move:
-            # Get destination
-            dest_pos = cur_pos+move
-            if dest_pos.is_valid():
-                # Check if you need to home Z stages
-                if not cur_pos.move_in_hole(dest_pos):
-                    motor_moves.append(PCUSequencer.home_Z)
-                # Trigger a PCU move
-                self.motor_moves.append(move.xy)
-                self.motor_moves.append(move.z)
-                # Go to moving
-                self.to_MOVING()
-            else:
-                self.critical(f"Invalid destination position: {dest_pos}")
+        # Get destination
+        dest_pos = cur_pos+move
+        if dest_pos.is_valid():
+            # Check if you need to home Z stages
+            if not cur_pos.move_in_hole(dest_pos):
+                motor_moves.append(PCUSequencer.home_Z)
+            # Trigger a PCU move
+            self.motor_moves.append(move.xy)
+            self.motor_moves.append(move.z)
+            # Go to moving
+            self.to_MOVING()
+        else:
+            self.critical(f"Invalid destination position: {dest_pos}")
     
     def checkabort(self):
         """Check if the abort flag is set, and drop into the FAULT state"""
@@ -682,9 +736,16 @@ class PCUSequencer(Sequencer):
                 next_move = self.motor_moves.pop(0)
                 self.message(f"Triggering move, {next_move}.")
                 self.trigger_move(next_move)
+            # All moves are finished and we can go back into position
             elif len(self.motor_moves) == 0 and self.move_complete():
                 # No moves left to make, finish and change state
-                self.message("Finished moving.")
+                
+                # Check if motors were homing
+                if self.homing: 
+                    self.end_home_sequence()
+                else: # Regular motor
+                    self.message("Finished moving.")
+                
                 # Change configuration and destination keywords
                 self.configuration = self.destination
                 self.destination = ''
@@ -732,7 +793,7 @@ if __name__ == "__main__":
     
     # Setup environment variables to find the right EPICS channel
     os.environ['EPICS_CA_ADDR_LIST'] = 'localhost:8600 localhost:8601 localhost:8602 ' + \
-        'localhost:8603 localhost:8604 localhost:8605 localhost:8606 localhost:5064'
+        'localhost:8603 localhost:8604 localhost:8605 localhost:8606 localhost:8609 localhost:5064'
     os.environ['EPICS_CA_AUTO_ADDR_LIST'] = 'NO'
 
     # Define an enum of task names
