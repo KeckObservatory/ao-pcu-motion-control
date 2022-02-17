@@ -482,6 +482,7 @@ class PCUSequencer(Sequencer):
         self.motor_moves.append({"m1": 'home', "m2": 'home'})
     
     def end_home_sequence(self):
+        """Finishes homing sequence"""
         self.message("Finished homing.")
         self.homing = False
         self.caRequest.put('enable')
@@ -505,6 +506,10 @@ class PCUSequencer(Sequencer):
             else:
                 self.critical("Aborting sequencer.")
                 self.stop()
+        
+        if request == 'abort':
+            self.critical("Aborting sequencer.")
+            self.stop()
         
         if request == 'enable':
             if self.state == PCUStates.INPOS:

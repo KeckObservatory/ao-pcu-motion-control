@@ -176,7 +176,7 @@ class collisionSequencer(Sequencer):
         ### Calculate which axis/axes should allow motion
         move_to_center = False
         
-        # Fiber positioning
+        ### Fiber positioning
         if not fiber_in_hole and cur_pos.fiber_extended():
             if not self.same_message:
                 self.critical("The fiber bundle is extended. Please fully retract the fiber bundle stage (motor 4).")
@@ -189,7 +189,7 @@ class collisionSequencer(Sequencer):
             instr_center = PCUPos(m1=PCUPos.fiber_center['m1'], m2=PCUPos.fiber_center['m2'], m3=0, m4=0)
             move_to_center = True
         
-        # Pinhole mask positioning
+        ### Pinhole mask positioning
         if not mask_in_hole and cur_pos.mask_extended():
             if not self.same_message:
                 self.critical("The pinhole mask is extended. Please retract the pinhole mask (motor 3).")
@@ -202,8 +202,8 @@ class collisionSequencer(Sequencer):
             instr_center = PCUPos(m1=PCUPos.mask_center['m1'], m2=PCUPos.mask_center['m2'], m3=0, m4=0)
             move_to_center = True
         
+        ### Must be fixed manually
         if cur_pos.fiber_extended() and cur_pos.mask_extended() and move_to_center:
-            # Must be fixed manually
             if not self.same_message:
                 self.critical("The PCU stages must be reset manually.")
             self.to_STOPPED()
@@ -213,13 +213,13 @@ class collisionSequencer(Sequencer):
                 if pos_diff[m_name] > 0: self.allowed_motors[m_name] = operator.ge
                 if pos_diff[m_name] < 0: self.allowed_motors[m_name] = operator.le
         
-        self.same_message = True
+        self.same_message = True # already printed instructional message
         
         if self.allowed_motors != old_motors:
             self.same_message = False
     
     def check_all_pos(self):
-        """ Checks all positions for validity """
+        """ Checks both commanded and current position for validity """
         cur_pos = self.current_pos()
         future_pos = self.commanded_pos()
 
@@ -235,12 +235,12 @@ class collisionSequencer(Sequencer):
         return True
     
     def check_future_pos(self):
-        """ Checks for restricted moves """
+        """ Checks future position against restricted moves """
         # Get position difference
         cur_pos = self.current_pos()
         future_pos = self.commanded_pos()
         
-        # Check motor moves are in right direction
+        # Check that any motor moves are in right direction
         for m_name, op in self.allowed_motors.items():
             if not op(future_pos[m_name], cur_pos[m_name]):
                 self.critical("Invalid move requested.")
@@ -257,12 +257,14 @@ class collisionSequencer(Sequencer):
         request = self.seqrequest.lower()
         valid_pos = self.current_pos().is_valid()
         
+        ### Enable collision avoidance
         if request=='enable':
             if self.state==collisionStates.MONITORING:
                 self.critical("Collision avoidance is already enabled.")
             else:
                 request = 'reinit'
         
+        ### Reinitialize collision avoidance
         if request=='reinit':
             if self.state==collisionStates.MONITORING or self.state==collisionStates.FAULT:
                 self.to_INIT()
@@ -270,7 +272,9 @@ class collisionSequencer(Sequencer):
                 self.to_INIT()
             else:
                 self.critical("Cannot reinitialize from an invalid position.")
+                self.to_STOPPED()
         
+        ### Turn on directional moves when in an invalid position
         if request=='allow_moves':
             if self.state==collisionStates.STOPPED:
                 self.message("Turning on directional moves for safe axes.")
@@ -283,6 +287,7 @@ class collisionSequencer(Sequencer):
             else:
                 self.critical("All moves are enabled.")
         
+        ### Disable collision avoidance checking
         if request=='disable':
             if self.state==collisionStates.FAULT:
                 self.critical("Cannot disable from the FAULT state.")
@@ -292,6 +297,7 @@ class collisionSequencer(Sequencer):
                               "Please be aware of the hardware limits before driving the PCU.")
             self.to_DISABLE()
         
+        ### Shut down collision avoidance IOC
         if request=='shutdown':
             self.stop()
     
@@ -327,9 +333,9 @@ class collisionSequencer(Sequencer):
             self.reset_motors()
             
             # Check current position
-            if self.check_all_pos():
+            if self.check_all_pos(): # ok position
                 self.to_MONITORING()
-            else: self.to_STOPPED()
+            else: self.to_STOPPED() # started in invalid pos
             
         except PVDisconnectException as err:
             self.critical(str(err))
@@ -367,9 +373,9 @@ class collisionSequencer(Sequencer):
         try:
             # Make sure the motors are disabled
             if self.motors_enabled():
-                self.message(f"M1 enabled?: {self.motors['m1'].isEnabled()}")
-                self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
-                self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
+#                 self.message(f"M1 enabled?: {self.motors['m1'].isEnabled()}")
+#                 self.message(f"M2 enabled?: {self.motors['m2'].isEnabled()}")
+#                 self.message(f"M4 enabled?: {self.motors['m4'].isEnabled()}")
                 self.critical("Motors cannot be enabled in STOPPED state.")
                 self.stop_and_reset()
 
